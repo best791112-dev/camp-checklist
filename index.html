@@ -63,25 +63,52 @@
     <!-- 頂部資訊與連線狀態 -->
     <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3.5 sm:p-4 mb-3">
       <div class="flex items-center justify-between gap-2 mb-2">
+        <!-- 點擊展開多活動切換選單 -->
         <div class="flex items-center gap-2 flex-1 min-w-0">
-          <span class="text-2xl flex-shrink-0">🏕️</span>
-          <h1 class="text-base sm:text-lg font-bold text-stone-800 truncate" :title="eventTitle">
-            {{ eventTitle }}
-          </h1>
+          <button 
+            @click="showTripSwitchModal = true" 
+            class="flex items-center gap-2 text-left hover:bg-stone-50 p-1 -m-1 rounded-xl transition group max-w-full"
+            title="點擊切換行程或新增活動">
+            <span class="text-2xl flex-shrink-0">🏕️</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <h1 class="text-base sm:text-lg font-bold text-stone-800 truncate group-hover:text-emerald-700" :title="currentTrip?.title || eventTitle">
+                  {{ currentTrip?.title || eventTitle }}
+                </h1>
+                <i class="ph ph-caret-down text-xs text-stone-400 group-hover:text-emerald-600 flex-shrink-0"></i>
+              </div>
+              <div class="flex items-center gap-2 text-[11px] text-stone-500">
+                <span v-if="currentTrip?.date">📅 {{ currentTrip.date }}</span>
+                <span v-if="currentTrip?.isLocked" class="text-amber-600 font-semibold flex items-center gap-0.5">
+                  <i class="ph ph-lock-key-fill text-xs"></i> 已鎖定
+                </span>
+                <span class="text-stone-400">· 點此切換行程 ▾</span>
+              </div>
+            </div>
+          </button>
         </div>
         
-        <!-- 連線狀態 & 設定按鈕 -->
+        <!-- 連線狀態、防誤改鎖定 & 設定按鈕 -->
         <div class="flex items-center gap-1.5 flex-shrink-0">
-          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+          <!-- 清單鎖定防誤改按鈕 -->
+          <button 
+            @click="toggleLockTrip" 
+            :class="['px-2 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition border', currentTrip?.isLocked ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100']"
+            :title="currentTrip?.isLocked ? '清單已鎖定，點擊解鎖' : '點擊鎖定清單防誤改'">
+            <i :class="['ph text-sm', currentTrip?.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open']"></i>
+            <span class="hidden sm:inline">{{ currentTrip?.isLocked ? '已鎖定' : '未鎖定' }}</span>
+          </button>
+
+          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            雲端即時
+            即時同步
           </span>
-          <span v-else class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+          <span v-else class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
             本地模式
           </span>
 
-          <button @click="showSettingsModal = true" class="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition" title="設定">
+          <button @click="showSettingsModal = true" class="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition" title="活動設定與成員名單">
             <i class="ph ph-gear text-lg"></i>
           </button>
         </div>
@@ -661,6 +688,143 @@
     <!-- Modals 彈窗群 -->
     <!-- ============================================================== -->
 
+    <!-- Modal 0A: 切換活動行程 (多活動獨立管理) -->
+    <div v-if="showTripSwitchModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl flex flex-col max-h-[85vh]">
+        <div class="flex items-center justify-between pb-3 border-b border-stone-100">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🗂️</span>
+            <h3 class="text-base font-bold text-stone-800">活動與行程切換</h3>
+          </div>
+          <button @click="showTripSwitchModal = false" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <p class="text-xs text-stone-500 mt-2 mb-3">
+          這個月、下個月行程分開管理，物資與帳務互不干擾！
+        </p>
+
+        <!-- 行程卡片清單 -->
+        <div class="space-y-2 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+          <div 
+            v-for="trip in allTrips" 
+            :key="trip.id" 
+            @click="switchTrip(trip.id)"
+            :class="[
+              'p-3 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3',
+              trip.id === currentTripId ? 'border-emerald-600 bg-emerald-50/80 shadow-xs' : 'border-stone-200 bg-white hover:border-emerald-300'
+            ]">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="font-bold text-sm text-stone-800">{{ trip.title }}</span>
+                <span v-if="trip.id === currentTripId" class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-700 text-white font-semibold">使用中</span>
+                <span v-if="trip.passcode" class="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 font-semibold flex items-center gap-0.5">
+                  <i class="ph ph-lock-key-fill text-[10px]"></i> 密碼保護
+                </span>
+                <span v-if="trip.isLocked" class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-700 font-semibold">已鎖定</span>
+              </div>
+              <div class="text-[11px] text-stone-500 mt-1 flex items-center gap-3">
+                <span v-if="trip.date">📅 {{ trip.date }}</span>
+                <span>📦 {{ trip.items?.length || 0 }} 項物資</span>
+                <span>👥 {{ trip.members?.length || 0 }} 位成員</span>
+              </div>
+            </div>
+            
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <button 
+                v-if="allTrips.length > 1" 
+                @click.stop="deleteCurrentTrip(trip.id)" 
+                class="p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-stone-100 transition" 
+                title="刪除此行程">
+                <i class="ph ph-trash text-base"></i>
+              </button>
+              <i class="ph ph-caret-right text-stone-400 text-base"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部建立新活動按鈕 -->
+        <div class="pt-3 border-t border-stone-100 mt-3 flex items-center justify-between gap-2">
+          <button 
+            @click="showTripSwitchModal = false; showNewTripModal = true" 
+            class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md">
+            <i class="ph ph-plus-circle text-base"></i>
+            <span>➕ 建立新露營活動 / 行程</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 0B: 建立全新行程 -->
+    <div v-if="showNewTripModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl">
+        <div class="flex items-center justify-between pb-2 border-b border-stone-100 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">⛺</span>
+            <h3 class="text-base font-bold text-stone-800">建立全新露營活動</h3>
+          </div>
+          <button @click="showNewTripModal = false" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <form @submit.prevent="createNewTrip" class="space-y-3 text-xs">
+          <div>
+            <label class="block font-semibold text-stone-700 mb-1">活動行程名稱 *</label>
+            <input 
+              v-model.trim="formNewTrip.title" 
+              type="text" 
+              placeholder="例：🌊 11月 花蓮海邊露營團..." 
+              required
+              class="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-stone-700 mb-1">出發日期 (選填)</label>
+            <input 
+              v-model="formNewTrip.date" 
+              type="date" 
+              class="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-stone-700 mb-1">
+              4 位數通關密碼 (選填，防止非本群人員查看)
+            </label>
+            <input 
+              v-model.trim="formNewTrip.passcode" 
+              type="text" 
+              placeholder="例如：6688 (留空表示公開不設密)" 
+              class="w-full border border-stone-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <p class="text-[11px] text-stone-400 mt-0.5">有設密碼時，其他群友點擊進入此行程需輸入密碼。</p>
+          </div>
+
+          <div class="bg-stone-50 p-2.5 rounded-xl border border-stone-200">
+            <label class="flex items-center gap-2 cursor-pointer font-semibold text-stone-700">
+              <input type="checkbox" v-model="formNewTrip.importPresets" class="rounded text-emerald-600 focus:ring-emerald-500">
+              <span>自動載入預設攜帶清單範本 (50+ 項基本裝備)</span>
+            </label>
+            <p class="text-[11px] text-stone-400 ml-5 mt-0.5">自動載入帳篷、炊具、食材點檢項目，省去從頭打字的麻煩。</p>
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button 
+              type="button" 
+              @click="showNewTripModal = false" 
+              class="flex-1 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
+              取消
+            </button>
+            <button 
+              type="submit" 
+              class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md">
+              確認建立行程
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- Modal 1: 指定誰帶 -->
     <div v-if="showAssignModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl">
@@ -680,6 +844,21 @@
               placeholder="例：大華、阿妹、老張..." 
               required
               class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <!-- 快速點選本活動成員 -->
+          <div v-if="currentTrip?.members && currentTrip.members.length > 0" class="bg-stone-50 p-2.5 rounded-xl border border-stone-200">
+            <span class="text-[11px] font-semibold text-stone-500 block mb-1.5">點選已確認成員快速填入：</span>
+            <div class="flex flex-wrap gap-1.5">
+              <button 
+                type="button" 
+                v-for="m in currentTrip.members" 
+                :key="m" 
+                @click="selectQuickMember(m)" 
+                class="px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 border border-stone-200 hover:border-emerald-400 text-stone-700 text-xs font-medium transition shadow-2xs">
+                👤 {{ m }}
+              </button>
+            </div>
           </div>
 
           <div class="flex gap-2 pt-2">
@@ -959,31 +1138,143 @@
       </div>
     </div>
 
-    <!-- Modal 7: 設定 -->
+    <!-- Modal 7: 設定與成員管理 (防大亂機制) -->
     <div v-if="showSettingsModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs">
-        <div class="flex justify-between items-center mb-3">
-          <h3 class="text-sm font-bold text-stone-800">⚙️ 系統設定與營地資訊</h3>
-          <button @click="showSettingsModal = false" class="text-stone-400 hover:text-stone-600"><i class="ph ph-x text-lg"></i></button>
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs max-h-[88vh] flex flex-col">
+        <div class="flex justify-between items-center pb-2.5 border-b border-stone-100 mb-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-base">⚙️</span>
+            <h3 class="text-sm font-bold text-stone-800">活動設定與防大亂管理</h3>
+          </div>
+          <button @click="showSettingsModal = false" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
         </div>
-        <div class="space-y-3">
+
+        <div class="space-y-3.5 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+          <!-- 活動名稱與日期 -->
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">活動主題名稱</label>
-            <input v-model="eventTitleInput" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+            <label class="block font-semibold text-stone-700 mb-1">活動主題名稱 *</label>
+            <input v-model="currentTrip.title" type="text" placeholder="例：🌲 2026年10月 新竹尖石露營" class="w-full border border-stone-300 rounded-xl px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-stone-700 mb-1">活動日期</label>
+            <input v-model="currentTrip.date" type="date" class="w-full border border-stone-300 rounded-xl px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <!-- 4位數密碼防護 (群友專屬) -->
+          <div class="bg-purple-50/70 p-3 rounded-xl border border-purple-200">
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-bold text-purple-900 flex items-center gap-1">
+                <i class="ph ph-lock-key text-sm"></i> 通關密碼保護
+              </label>
+              <span class="text-[10px] text-purple-700">{{ currentTrip.passcode ? '已設密碼' : '公開模式' }}</span>
+            </div>
+            <input 
+              v-model.trim="currentTrip.passcode" 
+              type="text" 
+              placeholder="例：8888 (留空表示不設密碼)" 
+              class="w-full border border-purple-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-purple-400 focus:outline-none">
+            <p class="text-[11px] text-purple-700 mt-1">
+              💡 設定密碼後，只有持有通關密碼的群友才能切換檢視此活動，避免被外人查看！
+            </p>
+          </div>
+
+          <!-- 鎖定狀態 (出發前防誤改) -->
+          <div class="bg-amber-50/70 p-3 rounded-xl border border-amber-200 flex items-center justify-between gap-3">
+            <div>
+              <div class="font-bold text-amber-900 flex items-center gap-1">
+                <i :class="['ph text-sm', currentTrip.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open']"></i>
+                出發前清單鎖定保護
+              </div>
+              <p class="text-[11px] text-amber-700 mt-0.5">
+                {{ currentTrip.isLocked ? '目前處於鎖定狀態：禁止新增、刪除或修改物品，防止出發前被誤按。' : '目前處於解鎖狀態：群友可自由認領、指派或新增物品。' }}
+              </p>
+            </div>
+            <button 
+              type="button" 
+              @click="toggleLockTrip" 
+              :class="['px-3 py-1.5 rounded-xl font-bold text-xs flex-shrink-0 shadow-xs border transition', currentTrip.isLocked ? 'bg-amber-600 text-white border-amber-700 hover:bg-amber-700' : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50']">
+              {{ currentTrip.isLocked ? '點此解鎖' : '點此鎖定' }}
+            </button>
+          </div>
+
+          <!-- 成員白名單管理 -->
+          <div class="bg-stone-50 p-3 rounded-xl border border-stone-200">
+            <label class="block font-bold text-stone-800 mb-1">
+              👥 活動確認名單 (成員管理)
+            </label>
+            <p class="text-[11px] text-stone-500 mb-2">
+              加入本團成員姓名後，物品認領「指定誰帶」可一鍵直接挑選，避免名字輸入混亂。
+            </p>
+
+            <!-- 現有名單標籤 -->
+            <div class="flex flex-wrap gap-1.5 mb-2.5">
+              <span 
+                v-for="member in (currentTrip.members || [])" 
+                :key="member" 
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-stone-200 text-stone-800 text-xs shadow-2xs">
+                👤 {{ member }}
+                <button 
+                  type="button" 
+                  @click="removeMember(member)" 
+                  class="text-stone-400 hover:text-red-500 ml-0.5" 
+                  title="移除成員">
+                  <i class="ph ph-x text-xs"></i>
+                </button>
+              </span>
+              <span v-if="!currentTrip.members || currentTrip.members.length === 0" class="text-stone-400 text-xs italic">
+                尚未新增成員，請在下方輸入新增。
+              </span>
+            </div>
+
+            <!-- 新增成員輸入框 -->
+            <div class="flex gap-1.5">
+              <input 
+                v-model.trim="newMemberInput" 
+                @keyup.enter="addMember" 
+                type="text" 
+                placeholder="輸入群友姓名 (例：小明、阿華)..." 
+                class="flex-1 border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              <button 
+                type="button" 
+                @click="addMember" 
+                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs">
+                ➕ 新增
+              </button>
+            </div>
+          </div>
+
+          <!-- 營地住宿地點 -->
+          <div>
+            <label class="block font-semibold text-stone-700 mb-1">營地 / 住宿名稱</label>
+            <input v-model="campSiteInfo.name" type="text" placeholder="例：新竹尖石之美露營區" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">營地名稱</label>
-            <input v-model="campSiteInfo.name" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+            <label class="block font-semibold text-stone-700 mb-1">營地地址 / 定位</label>
+            <input v-model="campSiteInfo.address" type="text" placeholder="例：新竹縣尖石鄉..." class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
-          <div>
-            <label class="block font-semibold text-stone-700 mb-1">營地地址</label>
-            <input v-model="campSiteInfo.address" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+
+          <!-- 危險區域操作 -->
+          <div class="pt-2 border-t border-stone-100 flex items-center justify-between">
+            <button 
+              @click="clearAllData" 
+              class="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-medium">
+              清空本活動物品
+            </button>
+            <button 
+              v-if="allTrips.length > 1"
+              @click="deleteCurrentTrip(currentTripId)" 
+              class="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-medium">
+              刪除此活動
+            </button>
           </div>
-          <div class="pt-2 flex gap-2">
-            <button @click="clearAllData" class="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs">清空所有物品</button>
-            <div class="flex-1"></div>
-            <button @click="saveSettings" class="px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs">儲存設定</button>
-          </div>
+        </div>
+
+        <div class="pt-3 border-t border-stone-100 mt-2 flex gap-2">
+          <button @click="showSettingsModal = false" class="flex-1 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">關閉</button>
+          <button @click="saveSettings" class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md">儲存設定</button>
         </div>
       </div>
     </div>
@@ -991,9 +1282,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_08"></script>
-  <script src="./config.js?v=20261012_08"></script>
+  <script src="./default-items.js?v=20261012_09"></script>
+  <script src="./config.js?v=20261012_09"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_08"></script>
+  <script src="./app.js?v=20261012_09"></script>
 </body>
 </html>
