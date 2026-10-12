@@ -3,7 +3,7 @@
  */
 
 // 完整的露營常備用品庫（供選單直接打勾挑選，不必手動打字）
-const PRESET_ITEM_LIBRARY = [
+window.PRESET_ITEM_LIBRARY = [
   // --- ⛺ 用品裝備 (equipment) ---
   { name: "露營帳篷", category: "equipment", quantity: "1 頂", note: "含外帳、內帳與營柱", isDefaultFavorite: true },
   { name: "天幕 / 客廳帳", category: "equipment", quantity: "1 組", note: "遮陽擋雨活動區", isDefaultFavorite: true },
@@ -67,13 +67,17 @@ const PRESET_ITEM_LIBRARY = [
 ];
 
 // 預設匯入的精簡清單
-const DEFAULT_CAMPING_ITEMS = PRESET_ITEM_LIBRARY.filter(i => i.isDefaultFavorite).map((item, index) => ({
-  id: "item_def_" + (index + 1),
-  name: item.name,
-  category: item.category,
-  quantity: item.quantity,
-  note: item.note,
-  assignedTo: null,
-  assignedUserName: null,
-  assignedUserPicture: null
-}));
+window.DEFAULT_CAMPING_ITEMS = window.PRESET_ITEM_LIBRARY.filter(function(i) {
+  return i.isDefaultFavorite;
+}).map(function(item, index) {
+  return {
+    id: "item_def_" + (index + 1),
+    name: item.name,
+    category: item.category,
+    quantity: item.quantity,
+    note: item.note,
+    assignedTo: null,
+    assignedUserName: null,
+    assignedUserPicture: null
+  };
+});
