@@ -196,27 +196,27 @@
         </div>
       </div>
 
-      <!-- 第 4 列：三大主分頁 Tab 切換導航 -->
-      <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-stone-100">
+      <!-- 第 4 列：三大主分頁 Tab 切換導航 (手機高度自適應，不擠壓) -->
+      <div class="grid grid-cols-3 gap-1 pt-1 border-t border-stone-100">
         <button 
           @click="mainView = 'items'" 
           :class="[
-            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition',
+            'py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition',
             mainView === 'items' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
           ]">
-          <i class="ph ph-check-square-offset text-base"></i>
-          <span>裝備物資</span>
+          <i class="ph ph-check-square-offset text-sm sm:text-base"></i>
+          <span>裝備清單</span>
         </button>
 
         <button 
           @click="mainView = 'carCheck'" 
           :class="[
-            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition relative',
+            'py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition relative',
             mainView === 'carCheck' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
           ]">
-          <i class="ph ph-car text-base"></i>
+          <i class="ph ph-car text-sm sm:text-base"></i>
           <span>上車點檢</span>
-          <span v-if="myCarCheckItems.length > 0" class="text-[10px] px-1.5 py-0.2 rounded-full"
+          <span v-if="myCarCheckItems.length > 0" class="text-[9px] px-1 rounded-full font-mono"
                 :class="mainView === 'carCheck' ? 'bg-emerald-900 text-emerald-200' : 'bg-stone-200 text-stone-700'">
             {{ carCheckCount.loaded }}/{{ carCheckCount.total }}
           </span>
@@ -225,11 +225,11 @@
         <button 
           @click="mainView = 'trip'" 
           :class="[
-            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition',
+            'py-2 px-1 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition',
             mainView === 'trip' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
           ]">
-          <i class="ph ph-map-trifold text-base"></i>
-          <span>行程與記帳</span>
+          <i class="ph ph-map-trifold text-sm sm:text-base"></i>
+          <span>行程記帳</span>
         </button>
       </div>
     </header>
@@ -272,8 +272,8 @@
       </div>
 
       <!-- 快捷過濾與搜尋 -->
-      <div class="flex items-center gap-1.5 mb-3">
-        <div class="relative flex-1 min-w-0">
+      <div class="flex items-center gap-1.5 mb-3 flex-wrap sm:flex-nowrap">
+        <div class="relative flex-1 min-w-[130px]">
           <i class="ph ph-magnifying-glass absolute left-2.5 top-2 text-stone-400 text-xs"></i>
           <input 
             v-model="searchQuery" 
@@ -282,25 +282,27 @@
             class="w-full bg-white border border-stone-200 rounded-xl pl-7 pr-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
         
-        <button 
-          @click="filterMyItemsOnly = !filterMyItemsOnly"
-          :class="[
-            'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
-            filterMyItemsOnly ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
-          ]">
-          <i class="ph ph-user"></i>
-          <span>我帶的</span>
-        </button>
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          <button 
+            @click="filterMyItemsOnly = !filterMyItemsOnly"
+            :class="[
+              'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition',
+              filterMyItemsOnly ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
+            ]">
+            <i class="ph ph-user"></i>
+            <span>我帶的</span>
+          </button>
 
-        <button 
-          @click="filterUnclaimedOnly = !filterUnclaimedOnly"
-          :class="[
-            'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
-            filterUnclaimedOnly ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
-          ]">
-          <i class="ph ph-funnel"></i>
-          <span>待認領</span>
-        </button>
+          <button 
+            @click="filterUnclaimedOnly = !filterUnclaimedOnly"
+            :class="[
+              'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition',
+              filterUnclaimedOnly ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
+            ]">
+            <i class="ph ph-funnel"></i>
+            <span>待認領</span>
+          </button>
+        </div>
       </div>
 
       <!-- 物品清單 -->
@@ -1730,9 +1732,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_16"></script>
-  <script src="./config.js?v=20261012_16"></script>
+  <script src="./default-items.js?v=20261012_17"></script>
+  <script src="./config.js?v=20261012_17"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_16"></script>
+  <script src="./app.js?v=20261012_17"></script>
 </body>
 </html>
