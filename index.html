@@ -20,12 +20,6 @@
               700: '#15803d',
               800: '#166534',
               900: '#14532d'
-            },
-            camp: {
-              wood: '#854d0e',
-              tent: '#ea580c',
-              earth: '#78716c',
-              sand: '#f5f5f4'
             }
           }
         }
@@ -47,7 +41,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
   <style>
-    /* iOS 平滑滾動與觸控優化 */
     body {
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
@@ -100,8 +93,8 @@
           <div v-else class="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
             {{ currentUser.displayName.slice(0, 1) }}
           </div>
-          <span class="text-stone-600">目前身分：</span>
-          <span class="font-semibold text-stone-800">{{ currentUser.displayName }}</span>
+          <span class="text-stone-600 text-xs sm:text-sm">目前身分：</span>
+          <span class="font-semibold text-stone-800 text-xs sm:text-sm">{{ currentUser.displayName }}</span>
         </div>
         <button @click="promptChangeName" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium underline">
           修改名字
@@ -168,10 +161,15 @@
     <div v-if="filteredItems.length === 0" class="bg-white rounded-2xl p-8 text-center border border-stone-200/80 shadow-sm my-6">
       <div class="text-4xl mb-2">📋</div>
       <p class="text-stone-600 font-medium">目前沒有符合的項目</p>
-      <p class="text-stone-400 text-xs mt-1">可點擊下方「匯入露營範本」或「新增自訂物品」</p>
-      <div class="mt-4 flex justify-center gap-2">
-        <button @click="importDefaultItems" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 shadow-sm">
-          匯入常見露營裝備與食材
+      <p class="text-stone-400 text-xs mt-1">直接從選單勾選用品與食材，省去手動打字的麻煩！</p>
+      <div class="mt-4 flex flex-wrap justify-center gap-2">
+        <button @click="openQuickPicker('favorites')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 shadow-sm flex items-center gap-1.5">
+          <i class="ph ph-star-fill text-amber-300"></i>
+          <span>從「經常選擇」勾選</span>
+        </button>
+        <button @click="openQuickPicker('equipment')" class="px-3.5 py-2 bg-stone-100 text-stone-700 rounded-xl text-xs font-semibold hover:bg-stone-200 flex items-center gap-1">
+          <i class="ph ph-list-checks"></i>
+          <span>瀏覽用品選單庫</span>
         </button>
       </div>
     </div>
@@ -202,8 +200,17 @@
             </p>
           </div>
 
-          <!-- 編輯 / 刪除下拉 -->
+          <!-- 常用星號 & 編輯 / 刪除 -->
           <div class="flex items-center gap-1">
+            <button 
+              @click="toggleFavorite(item.name)" 
+              class="p-1.5 rounded-lg hover:bg-stone-100 transition" 
+              :title="isFavorite(item.name) ? '已加入經常選擇' : '加入經常選擇'">
+              <i :class="[
+                'ph text-base transition', 
+                isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
+              ]"></i>
+            </button>
             <button @click="openEditModal(item)" class="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition" title="編輯">
               <i class="ph ph-pencil-simple text-sm"></i>
             </button>
@@ -234,14 +241,12 @@
 
           <!-- 認領動作按鈕 -->
           <div>
-            <!-- 如果已被自己認領 -->
             <button 
               v-if="item.assignedTo === currentUser.userId"
               @click="unclaimItem(item)"
               class="px-3 py-1 rounded-lg text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition">
               取消認領
             </button>
-            <!-- 如果已被其他人認領 -->
             <button 
               v-else-if="item.assignedTo"
               @click="claimItem(item, true)"
@@ -249,7 +254,6 @@
               title="改由我帶">
               由我接手
             </button>
-            <!-- 尚未認領 -->
             <button 
               v-else
               @click="claimItem(item)"
@@ -266,36 +270,199 @@
     <!-- 底部懸浮快速操作列 -->
     <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-2.5 z-30 shadow-lg">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
+        
+        <!-- 主按鈕：選單勾選庫 -->
+        <button 
+          @click="openQuickPicker()" 
+          class="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition">
+          <i class="ph ph-list-checks text-base"></i>
+          <span>選單勾選庫</span>
+        </button>
+
+        <!-- 手動自訂新增 -->
         <button 
           @click="openAddModal" 
-          class="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition">
-          <i class="ph ph-plus-circle text-base"></i>
-          <span>新增物品</span>
-        </button>
-
-        <button 
-          @click="importDefaultItems" 
           class="py-2.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition"
-          title="匯入常備範本">
-          <i class="ph ph-file-plus text-base text-stone-500"></i>
-          <span class="hidden sm:inline">匯入範本</span>
+          title="手動自訂輸入">
+          <i class="ph ph-plus-circle text-base text-stone-500"></i>
+          <span>自訂新增</span>
         </button>
 
+        <!-- 發送 / 複製清單 -->
         <button 
           @click="shareToLineOrExport" 
           class="py-2.5 px-3 bg-stone-800 hover:bg-stone-900 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition">
           <i class="ph ph-share-network text-base text-emerald-400"></i>
-          <span>發送/複製摘要</span>
+          <span class="hidden sm:inline">發送/複製摘要</span>
+          <span class="sm:hidden">摘要</span>
         </button>
       </div>
     </nav>
 
-    <!-- Modal 1: 新增 / 編輯物品 -->
+    <!-- Modal 1: 選單快速勾選庫 (Quick Picker) -->
+    <div v-if="showQuickPickerModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl flex flex-col max-h-[90vh]">
+        
+        <!-- 標題列 -->
+        <div class="flex justify-between items-center mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">📋</span>
+            <h3 class="text-base font-bold text-stone-800">
+              用品與食材選單庫
+            </h3>
+          </div>
+          <button @click="showQuickPickerModal = false" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <!-- 選單庫分類 Tabs -->
+        <div class="flex gap-1.5 overflow-x-auto pb-2 custom-scrollbar mb-2.5">
+          <button 
+            v-for="tab in pickerTabs" 
+            :key="tab.id"
+            @click="pickerCategory = tab.id"
+            :class="[
+              'px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition flex items-center gap-1',
+              pickerCategory === tab.id 
+                ? (tab.id === 'favorites' ? 'bg-amber-500 text-white shadow-sm' : 'bg-emerald-700 text-white shadow-sm')
+                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            ]">
+            <span>{{ tab.icon }}</span>
+            <span>{{ tab.name }}</span>
+            <span v-if="tab.id === 'favorites'" class="text-[10px] ml-0.5 opacity-90">({{ favorites.length }})</span>
+          </button>
+        </div>
+
+        <!-- 搜尋與快捷操作 -->
+        <div class="flex items-center gap-2 mb-3">
+          <div class="relative flex-1">
+            <i class="ph ph-magnifying-glass absolute left-3 top-2 text-stone-400 text-xs"></i>
+            <input 
+              v-model="pickerSearch" 
+              type="text" 
+              placeholder="搜尋選單庫物品..." 
+              class="w-full bg-stone-50 border border-stone-200 rounded-xl pl-8 pr-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          </div>
+
+          <button 
+            v-if="pickerCategory === 'favorites'"
+            @click="addAllFavoritesToCurrentList"
+            class="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl text-[11px] font-semibold hover:bg-amber-100 flex items-center gap-1 flex-shrink-0"
+            title="把所有常用品項一次加入">
+            <i class="ph ph-lightning text-xs"></i>
+            <span>一鍵全加</span>
+          </button>
+
+          <button 
+            v-else
+            @click="selectAllAvailableInTab"
+            class="px-2.5 py-1 bg-stone-100 text-stone-700 rounded-xl text-[11px] font-medium hover:bg-stone-200 flex items-center gap-1 flex-shrink-0">
+            <i class="ph ph-checks text-xs"></i>
+            <span>本頁全選</span>
+          </button>
+        </div>
+
+        <!-- 勾選清單列表 -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-[220px]">
+          <div v-if="filteredPickerLibrary.length === 0" class="text-center py-8 text-stone-400 text-xs">
+            <span v-if="pickerCategory === 'favorites'">
+              ⭐ 您尚未收藏任何「經常選擇」項目！<br>可以在其他分頁中點擊星號 ⭐ 加入常用。
+            </span>
+            <span v-else>找不到符合條件的項目。</span>
+          </div>
+
+          <div 
+            v-for="item in filteredPickerLibrary" 
+            :key="item.name"
+            @click="togglePickItem(item)"
+            :class="[
+              'p-2.5 rounded-xl border transition flex items-center justify-between gap-2.5 cursor-pointer text-xs select-none',
+              isInCurrentList(item.name)
+                ? 'bg-stone-50 border-stone-200 opacity-60 cursor-not-allowed'
+                : (isPickerItemSelected(item) ? 'bg-emerald-50/80 border-emerald-500 shadow-xs' : 'bg-white border-stone-200 hover:border-emerald-300')
+            ]">
+            
+            <div class="flex items-center gap-2.5 min-w-0 flex-1">
+              <!-- Checkbox -->
+              <div class="flex-shrink-0">
+                <span v-if="isInCurrentList(item.name)" class="text-stone-400">
+                  <i class="ph ph-check-circle-fill text-base text-stone-400"></i>
+                </span>
+                <span v-else-if="isPickerItemSelected(item)" class="text-emerald-600">
+                  <i class="ph ph-check-square-fill text-base"></i>
+                </span>
+                <span v-else class="text-stone-300">
+                  <i class="ph ph-square text-base"></i>
+                </span>
+              </div>
+
+              <!-- 資訊 -->
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                  <span class="font-semibold text-stone-800 text-xs">{{ item.name }}</span>
+                  <span v-if="item.quantity" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
+                    {{ item.quantity }}
+                  </span>
+                  <span v-if="isInCurrentList(item.name)" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-medium">
+                    已在清單中
+                  </span>
+                </div>
+                <p v-if="item.note" class="text-[11px] text-stone-400 truncate mt-0.5">
+                  {{ item.note }}
+                </p>
+              </div>
+            </div>
+
+            <!-- 星號 (切換經常選擇) -->
+            <button 
+              type="button"
+              @click.stop="toggleFavorite(item.name)" 
+              class="p-1 rounded hover:bg-stone-100 transition flex-shrink-0"
+              :title="isFavorite(item.name) ? '取消常用' : '加為常用'">
+              <i :class="[
+                'ph text-base transition',
+                isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
+              ]"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 底部確認按鈕 -->
+        <div class="pt-3 border-t border-stone-100 mt-2 flex items-center justify-between gap-2">
+          <div class="text-xs text-stone-500">
+            已勾選 <span class="font-bold text-emerald-700 text-sm">{{ selectedPickerItems.length }}</span> 項
+          </div>
+          <div class="flex gap-2">
+            <button 
+              @click="showQuickPickerModal = false" 
+              class="px-3.5 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
+              關閉
+            </button>
+            <button 
+              @click="addSelectedToCurrentList" 
+              :disabled="selectedPickerItems.length === 0"
+              :class="[
+                'px-4 py-2 rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5',
+                selectedPickerItems.length > 0
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                  : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+              ]">
+              <i class="ph ph-plus-bold"></i>
+              <span>加入清單 ({{ selectedPickerItems.length }})</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Modal 2: 手動自訂 / 編輯物品 -->
     <div v-if="showItemModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl">
         <div class="flex justify-between items-center mb-4">
           <h3 class="text-base font-bold text-stone-800">
-            {{ editingItem ? '編輯物品' : '新增攜帶物品' }}
+            {{ editingItem ? '編輯物品' : '手動自訂攜帶物品' }}
           </h3>
           <button @click="showItemModal = false" class="text-stone-400 hover:text-stone-600">
             <i class="ph ph-x text-lg"></i>
@@ -365,7 +532,7 @@
       </div>
     </div>
 
-    <!-- Modal 2: 摘要與匯出 -->
+    <!-- Modal 3: 摘要與匯出 -->
     <div v-if="showExportModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl flex flex-col max-h-[85vh]">
         <div class="flex justify-between items-center mb-3">
@@ -400,7 +567,7 @@
       </div>
     </div>
 
-    <!-- Modal 3: 系統設定 (Firebase & LIFF) -->
+    <!-- Modal 4: 系統設定 (Firebase & LIFF) -->
     <div v-if="showSettingsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs">
         <div class="flex justify-between items-center mb-3">
@@ -418,7 +585,7 @@
 
           <div>
             <label class="block font-semibold text-stone-700 mb-1">LINE LIFF ID</label>
-            <input v-model="liffIdInput" type="text" placeholder="例：1234567890-AbCdEfGh" class="w-full border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 font-mono">
+            <input v-model="liffIdInput" type="text" placeholder="例：2011980881-P0EUvNYQ" class="w-full border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 font-mono">
             <p class="text-[11px] text-stone-400 mt-0.5">於 LINE Developers 後台建立 LIFF 取得，填入後可在 LINE 自動讀取成員資訊。</p>
           </div>
 
