@@ -114,19 +114,36 @@
         </div>
       </div>
 
-      <!-- 使用者身分資訊 -->
-      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-1.5 border border-stone-100 text-xs">
-        <div class="flex items-center gap-2">
-          <img v-if="currentUser.pictureUrl" :src="currentUser.pictureUrl" class="w-6 h-6 rounded-full object-cover border border-stone-300" alt="avatar">
-          <div v-else class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">
+      <!-- 使用者身分資訊 (支援名字認領狀態) -->
+      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-1.5 border border-stone-200 text-xs">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <img v-if="currentUser.pictureUrl" :src="currentUser.pictureUrl" class="w-6 h-6 rounded-full object-cover border border-stone-300 flex-shrink-0" alt="avatar">
+          <div v-else class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0">
             {{ currentUser.displayName.slice(0, 1) }}
           </div>
-          <span class="text-stone-500">目前身分：</span>
-          <span class="font-bold text-stone-800">{{ currentUser.displayName }}</span>
+          <div class="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap">
+            <span class="text-stone-500 flex-shrink-0">目前身分：</span>
+            <span class="font-bold text-stone-800 truncate">{{ currentUser.displayName }}</span>
+            <span v-if="myClaimedName" class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+              <i class="ph ph-check-circle-fill text-[10px]"></i> 已綁定本團
+            </span>
+            <span v-else class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 animate-pulse">
+              尚未認領名字
+            </span>
+          </div>
         </div>
-        <button @click="promptChangeName" class="text-emerald-700 hover:text-emerald-800 font-semibold underline">
-          修改名字
-        </button>
+
+        <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+          <button 
+            @click="showClaimMemberModal = true" 
+            :class="[
+              'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs',
+              myClaimedName ? 'bg-white border border-stone-200 text-stone-600 hover:text-emerald-700 hover:border-emerald-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white animate-bounce'
+            ]">
+            <i class="ph ph-user-check"></i>
+            <span>{{ myClaimedName ? '更換名字' : '選自己名字 🎯' }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- 頂部三大主分頁 Tab 切換導航 -->
@@ -878,6 +895,109 @@
       </div>
     </div>
 
+    <!-- Modal 1B: 選擇/認領成員身分 (獨佔防重複選取) -->
+    <div v-if="showClaimMemberModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl flex flex-col max-h-[85vh]">
+        <div class="flex items-center justify-between pb-2.5 border-b border-stone-100">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xl">🎯</span>
+            <h3 class="text-base font-bold text-stone-800">選擇您在本次出遊的身分</h3>
+          </div>
+          <button @click="showClaimMemberModal = false" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <p class="text-xs text-stone-500 mt-2 mb-3 leading-relaxed">
+          主揪已建立好成員名單，請點選您的名字綁定。<span class="font-bold text-emerald-800">一旦認領，其他群友就無法重複選擇該名字</span>，主揪指定給您的物品也會自動歸屬到「上車點檢」！
+        </p>
+
+        <!-- 成員名字卡片列表 -->
+        <div class="space-y-2 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+          <div 
+            v-for="member in (currentTrip?.members || [])" 
+            :key="member"
+            :class="[
+              'p-3 rounded-xl border transition flex items-center justify-between gap-3 text-xs',
+              isClaimedByMeName(member)
+                ? 'border-emerald-600 bg-emerald-50/90 shadow-2xs'
+                : (isClaimedByOther(member) ? 'border-stone-200 bg-stone-50 opacity-60' : 'border-stone-200 bg-white hover:border-emerald-400')
+            ]">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-base">{{ isClaimedByMeName(member) ? '👤' : (isClaimedByOther(member) ? '🔒' : '🙋') }}</span>
+                <span class="font-bold text-sm text-stone-800">{{ member }}</span>
+                <span v-if="isClaimedByMeName(member)" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-700 text-white font-semibold">
+                  您目前綁定的身分
+                </span>
+                <span v-else-if="isClaimedByOther(member)" class="text-[10px] px-2 py-0.5 rounded-full bg-stone-200 text-stone-600 font-medium">
+                  已被其他群友認領
+                </span>
+                <span v-else class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                  可認領
+                </span>
+              </div>
+            </div>
+
+            <!-- 操作按鈕 -->
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button 
+                v-if="isClaimedByMeName(member)" 
+                @click="releaseMemberClaim(member)" 
+                class="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition"
+                title="解除本名字認領">
+                解除認領
+              </button>
+              <button 
+                v-else-if="isClaimedByOther(member)" 
+                disabled
+                class="px-2.5 py-1.5 rounded-lg bg-stone-100 text-stone-400 text-xs font-medium cursor-not-allowed">
+                已鎖定
+              </button>
+              <button 
+                v-else 
+                @click="claimMemberName(member)" 
+                class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-2xs transition">
+                我是此人
+              </button>
+            </div>
+          </div>
+
+          <div v-if="!currentTrip?.members || currentTrip.members.length === 0" class="text-center py-6 text-stone-400 text-xs">
+            本活動尚未設定成員名單，請在下方輸入您的姓名直接加入！
+          </div>
+        </div>
+
+        <!-- 自行新增名字區域 -->
+        <div class="pt-3 border-t border-stone-100 mt-3">
+          <label class="block text-xs font-semibold text-stone-600 mb-1.5">
+            名單上沒有您的名字？
+          </label>
+          <div class="flex gap-2">
+            <input 
+              v-model.trim="customNewMemberName" 
+              @keyup.enter="addNewMemberAndClaim" 
+              type="text" 
+              placeholder="輸入您的真實姓名或暱稱..." 
+              class="flex-1 border border-stone-300 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <button 
+              type="button" 
+              @click="addNewMemberAndClaim" 
+              :disabled="!customNewMemberName.trim()"
+              class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md disabled:bg-stone-200 disabled:text-stone-400 transition">
+              ➕ 加入並認領
+            </button>
+          </div>
+        </div>
+
+        <div class="pt-2.5 mt-2 flex justify-end">
+          <button @click="showClaimMemberModal = false" class="px-4 py-1.5 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
+            關閉
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal 2: 新增/編輯行程地點 -->
     <div v-if="showStopModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs">
@@ -1209,24 +1329,43 @@
               加入本團成員姓名後，物品認領「指定誰帶」可一鍵直接挑選，避免名字輸入混亂。
             </p>
 
-            <!-- 現有名單標籤 -->
-            <div class="flex flex-wrap gap-1.5 mb-2.5">
-              <span 
+            <!-- 現有名單標籤與認領狀態 (主揪管理視角) -->
+            <div class="space-y-1.5 mb-2.5">
+              <div 
                 v-for="member in (currentTrip.members || [])" 
                 :key="member" 
-                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-stone-200 text-stone-800 text-xs shadow-2xs">
-                👤 {{ member }}
-                <button 
-                  type="button" 
-                  @click="removeMember(member)" 
-                  class="text-stone-400 hover:text-red-500 ml-0.5" 
-                  title="移除成員">
-                  <i class="ph ph-x text-xs"></i>
-                </button>
-              </span>
-              <span v-if="!currentTrip.members || currentTrip.members.length === 0" class="text-stone-400 text-xs italic">
+                class="flex items-center justify-between p-2 rounded-xl bg-white border border-stone-200 text-xs shadow-2xs">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-bold text-stone-800">👤 {{ member }}</span>
+                  <span v-if="isMemberClaimed(member)" class="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold flex items-center gap-0.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    已有裝置認領
+                  </span>
+                  <span v-else class="text-[10px] px-1.5 py-0.2 rounded-full bg-stone-100 text-stone-500 font-medium">
+                    ⚪ 尚未認領
+                  </span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button 
+                    v-if="isMemberClaimed(member)" 
+                    type="button" 
+                    @click="releaseMemberClaim(member)" 
+                    class="text-[11px] px-2 py-0.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 font-medium transition" 
+                    title="重置認領狀態，讓群友可重新認領">
+                    重置認領
+                  </button>
+                  <button 
+                    type="button" 
+                    @click="removeMember(member)" 
+                    class="p-1 text-stone-400 hover:text-red-500 rounded hover:bg-stone-50 transition" 
+                    title="從名單刪除">
+                    <i class="ph ph-trash text-sm"></i>
+                  </button>
+                </div>
+              </div>
+              <div v-if="!currentTrip.members || currentTrip.members.length === 0" class="text-stone-400 text-xs italic text-center py-2">
                 尚未新增成員，請在下方輸入新增。
-              </span>
+              </div>
             </div>
 
             <!-- 新增成員輸入框 -->
@@ -1282,9 +1421,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_09"></script>
-  <script src="./config.js?v=20261012_09"></script>
+  <script src="./default-items.js?v=20261012_10"></script>
+  <script src="./config.js?v=20261012_10"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_09"></script>
+  <script src="./app.js?v=20261012_10"></script>
 </body>
 </html>
