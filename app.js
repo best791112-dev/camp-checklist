@@ -43,6 +43,7 @@ createApp({
         title: "🌲 2026年10月 新竹尖石露營",
         date: "2026-10-24",
         passcode: "", // 選填通關密碼
+        adminPassword: "8888", // 主揪/副主揪管理者密碼 (預設 8888)
         isLocked: false, // 是否出發前鎖定
         members: ["王小明", "李小華"], // 成員白名單
         claimedMembers: {}, // 成員認領綁定 (防重複選取)
@@ -90,8 +91,108 @@ createApp({
       title: "",
       date: "",
       passcode: "",
+      adminPassword: "8888", // 預設管理者密碼
       importPresets: true
     });
+
+    // ----------------------------------------------------
+    // 👑 方案 A：雙管理員密碼驗證權限機制
+    // ----------------------------------------------------
+    const verifiedAdminTrips = ref([]); // 記錄已通過管理員密碼驗證的 tripId 陣列
+    const showAdminLoginModal = ref(false);
+    const adminPasswordInput = ref('');
+    const adminLoginMessage = ref('');
+    let pendingAdminAction = null;
+
+    function loadVerifiedAdminsFromStorage() {
+      try {
+        const saved = localStorage.getItem('camp_verified_admin_trips');
+        if (saved) {
+          verifiedAdminTrips.value = JSON.parse(saved);
+        } else {
+          // 預設將初始範例行程認證為管理者，方便使用者直接試用體驗
+          verifiedAdminTrips.value = ["trip_202610_default"];
+          saveVerifiedAdminsToStorage();
+        }
+      } catch (e) {
+        verifiedAdminTrips.value = ["trip_202610_default"];
+      }
+    }
+
+    function saveVerifiedAdminsToStorage() {
+      try {
+        localStorage.setItem('camp_verified_admin_trips', JSON.stringify(verifiedAdminTrips.value));
+      } catch (e) {}
+    }
+
+    function setTripAdminVerified(tripId, isVerified) {
+      if (isVerified) {
+        if (!verifiedAdminTrips.value.includes(tripId)) {
+          verifiedAdminTrips.value.push(tripId);
+        }
+      } else {
+        verifiedAdminTrips.value = verifiedAdminTrips.value.filter(id => id !== tripId);
+      }
+      saveVerifiedAdminsToStorage();
+    }
+
+    // 當前活動是否具有管理者身分 (主揪或副主揪)
+    const isCurrentTripAdmin = computed(() => {
+      return verifiedAdminTrips.value.includes(currentTripId.value);
+    });
+
+    // 呼叫需要管理權限的操作。若非管理員則彈出密碼輸入彈窗
+    function requireAdminPermission(actionDescription, callback) {
+      if (isCurrentTripAdmin.value) {
+        if (typeof callback === 'function') callback();
+        return true;
+      }
+      adminLoginMessage.value = actionDescription ? `操作「${actionDescription}」需要主揪或副主揪管理權限，請輸入管理者密碼：` : '請輸入本活動管理者密碼：';
+      adminPasswordInput.value = '';
+      pendingAdminAction = callback;
+      showAdminLoginModal.value = true;
+      return false;
+    }
+
+    function openAdminLoginModal(actionDescription = '登入管理者後台') {
+      adminLoginMessage.value = `欲進入本活動後台，請輸入管理者密碼：`;
+      adminPasswordInput.value = '';
+      pendingAdminAction = null;
+      showAdminLoginModal.value = true;
+    }
+
+    function verifyAdminPassword() {
+      const correctPass = currentTrip.value?.adminPassword || "8888";
+      if (!adminPasswordInput.value.trim()) {
+        alert('請輸入管理者密碼！');
+        return;
+      }
+      if (adminPasswordInput.value.trim() === correctPass) {
+        setTripAdminVerified(currentTripId.value, true);
+        showAdminLoginModal.value = false;
+        alert(`🎉 驗證成功！您現在是「${currentTrip.value?.title}」的管理者 (主揪/副主揪)！\n已解鎖後台設定、鎖定清單、成員管理與清空重置權限。`);
+        if (typeof pendingAdminAction === 'function') {
+          const cb = pendingAdminAction;
+          pendingAdminAction = null;
+          cb();
+        }
+      } else {
+        alert('❌ 管理者密碼錯誤！若非主揪請向開團主揪索取密碼。');
+      }
+    }
+
+    function logoutAdmin() {
+      if (confirm(`確定要登出目前活動「${currentTrip.value?.title}」的管理者身分，切換為【普通團員】視角嗎？`)) {
+        setTripAdminVerified(currentTripId.value, false);
+        alert('👤 已切換為普通團員視角。');
+      }
+    }
+
+    function openSettingsWithAdminCheck() {
+      requireAdminPermission('開啟活動後台設定', () => {
+        showSettingsModal.value = true;
+      });
+    }
 
     // 當前選中的活動物件 (雙向綁定)
     const currentTrip = computed(() => {
@@ -218,6 +319,7 @@ createApp({
       loadFavoritesFromStorage();
       loadCarCheckFromStorage();
       loadTripsFromLocal();
+      loadVerifiedAdminsFromStorage();
       initUserIdentity();
       await initFirebaseIfConfigured();
       await initLiffIfConfigured();
@@ -271,11 +373,14 @@ createApp({
         initItems = JSON.parse(JSON.stringify(window.DEFAULT_CAMPING_ITEMS));
       }
 
+      const adminPass = (formNewTrip.value.adminPassword && formNewTrip.value.adminPassword.trim()) ? formNewTrip.value.adminPassword.trim() : "8888";
+
       const newTrip = {
         id: newId,
         title: formNewTrip.value.title.trim(),
         date: formNewTrip.value.date || "",
         passcode: formNewTrip.value.passcode.trim(),
+        adminPassword: adminPass, // 👑 主揪/副主揪管理密碼
         isLocked: false,
         members: [currentUser.value.displayName],
         claimedMembers: {},
@@ -304,12 +409,16 @@ createApp({
 
       allTrips.value.push(newTrip);
       currentTripId.value = newId;
+
+      // 👑 開團主揪自動獲得本活動之管理者授權
+      setTripAdminVerified(newId, true);
+
       persistData();
 
       showNewTripModal.value = false;
       showTripSwitchModal.value = false;
-      formNewTrip.value = { title: "", date: "", passcode: "", importPresets: true };
-      alert(`🎉 活動「${newTrip.title}」建立成功！`);
+      formNewTrip.value = { title: "", date: "", passcode: "", adminPassword: "8888", importPresets: true };
+      alert(`🎉 活動「${newTrip.title}」建立成功！\n👑 您已自動成為本活動管理者。\n管理者密碼為：【${adminPass}】（副主揪輸入此密碼亦可共同管理）。`);
     }
 
     function deleteCurrentTrip(tripId) {
@@ -318,11 +427,13 @@ createApp({
         return;
       }
       const t = allTrips.value.find(x => x.id === tripId);
-      if (confirm(`確定要刪除「${t?.title || '此活動'}」嗎？所有相關資料將會移除。`)) {
-        allTrips.value = allTrips.value.filter(x => x.id !== tripId);
-        currentTripId.value = allTrips.value[0].id;
-        persistData();
-      }
+      requireAdminPermission(`刪除活動「${t?.title || ''}」`, () => {
+        if (confirm(`確定要刪除「${t?.title || '此活動'}」嗎？所有相關資料將會移除。`)) {
+          allTrips.value = allTrips.value.filter(x => x.id !== tripId);
+          currentTripId.value = allTrips.value[0].id;
+          persistData();
+        }
+      });
     }
 
     // ----------------------------------------------------
@@ -421,7 +532,7 @@ createApp({
       alert(`🎉 認領成功！您現在在「${currentTrip.value.title}」的身分為【${targetName}】。\n其他人無法再重複選取此名字，主揪指定給您的物品將自動顯示於「上車點檢」！`);
     }
 
-    // 解除認領 (可由本人解除或主揪重置)
+    // 解除認領 (本人可解除自己；主揪/副主揪管理者可重置他人)
     function releaseMemberClaim(name) {
       if (!currentTrip.value || !currentTrip.value.claimedMembers) return;
       if (currentTrip.value.isLocked) {
@@ -429,11 +540,24 @@ createApp({
         return;
       }
 
-      if (confirm(`確定要解除「${name}」的認領綁定嗎？解除後該名字可重新被任何人選取。`)) {
-        delete currentTrip.value.claimedMembers[name];
-        persistData();
-        alert(`✅ 已解除「${name}」的認領綁定。`);
+      // 若解除的是自己認領的名字，本人可直接解除
+      if (name === myClaimedName.value) {
+        if (confirm(`確定要解除您認領的名字「${name}」嗎？解除後可重新選取其他名字。`)) {
+          delete currentTrip.value.claimedMembers[name];
+          persistData();
+          alert(`✅ 已解除「${name}」的認領。`);
+        }
+        return;
       }
+
+      // 若解除的是「其他人」認領的名字，必須具有管理者權限
+      requireAdminPermission(`重置他人認領（${name}）`, () => {
+        if (confirm(`確定要強制解除「${name}」的認領綁定嗎？解除後該名字可重新被任何人選取。`)) {
+          delete currentTrip.value.claimedMembers[name];
+          persistData();
+          alert(`✅ 已強制解除「${name}」的認領綁定。`);
+        }
+      });
     }
 
     // 自行新增名字並直接認領
@@ -452,35 +576,42 @@ createApp({
 
     function addMember() {
       if (!newMemberInput.value.trim() || !currentTrip.value) return;
-      const name = newMemberInput.value.trim();
-      if (!currentTrip.value.members) currentTrip.value.members = [];
-      if (!currentTrip.value.members.includes(name)) {
-        currentTrip.value.members.push(name);
-        persistData();
-      }
-      newMemberInput.value = '';
+      requireAdminPermission('新增成員名單', () => {
+        const name = newMemberInput.value.trim();
+        if (!currentTrip.value.members) currentTrip.value.members = [];
+        if (!currentTrip.value.members.includes(name)) {
+          currentTrip.value.members.push(name);
+          persistData();
+        }
+        newMemberInput.value = '';
+      });
     }
 
     function removeMember(name) {
       if (!currentTrip.value || !currentTrip.value.members) return;
-      if (confirm(`確定要從名單中移除「${name}」嗎？`)) {
-        currentTrip.value.members = currentTrip.value.members.filter(m => m !== name);
-        if (currentTrip.value.claimedMembers && currentTrip.value.claimedMembers[name]) {
-          delete currentTrip.value.claimedMembers[name];
+      requireAdminPermission(`移除成員「${name}」`, () => {
+        if (confirm(`確定要從名單中移除「${name}」嗎？`)) {
+          currentTrip.value.members = currentTrip.value.members.filter(m => m !== name);
+          if (currentTrip.value.claimedMembers && currentTrip.value.claimedMembers[name]) {
+            delete currentTrip.value.claimedMembers[name];
+          }
+          persistData();
         }
-        persistData();
-      }
+      });
     }
 
     function toggleLockTrip() {
       if (!currentTrip.value) return;
-      currentTrip.value.isLocked = !currentTrip.value.isLocked;
-      persistData();
-      if (currentTrip.value.isLocked) {
-        alert('🔒 清單已鎖定！出發前防止項目被誤刪或誤改。');
-      } else {
-        alert('🔓 清單已解鎖，現在可自由編輯。');
-      }
+      const actionName = currentTrip.value.isLocked ? '解鎖活動清單' : '鎖定活動清單';
+      requireAdminPermission(actionName, () => {
+        currentTrip.value.isLocked = !currentTrip.value.isLocked;
+        persistData();
+        if (currentTrip.value.isLocked) {
+          alert('🔒 清單已鎖定！出發前防止項目被誤刪或誤改。');
+        } else {
+          alert('🔓 清單已解鎖，現在可自由編輯。');
+        }
+      });
     }
 
     // ----------------------------------------------------
@@ -1358,7 +1489,13 @@ createApp({
       if (cached) {
         try {
           const list = JSON.parse(cached);
-          if (Array.isArray(list) && list.length > 0) allTrips.value = list;
+          if (Array.isArray(list) && list.length > 0) {
+            // 確保所有活動均具有管理者密碼欄位 (預設 8888 相容舊快取)
+            list.forEach(t => {
+              if (!t.adminPassword) t.adminPassword = "8888";
+            });
+            allTrips.value = list;
+          }
         } catch (e) {}
       }
       const curId = localStorage.getItem('camp_current_trip_id');
@@ -1436,11 +1573,13 @@ createApp({
     }
 
     function clearAllData() {
-      if (confirm('⚠️ 警告：這將會清空當前活動的所有物品，確定要重置嗎？')) {
-        if (currentTrip.value) currentTrip.value.items = [];
-        persistData();
-        showSettingsModal.value = false;
-      }
+      requireAdminPermission('清空全團物品', () => {
+        if (confirm('⚠️ 警告：這將會清空當前活動的所有物品，確定要重置嗎？')) {
+          if (currentTrip.value) currentTrip.value.items = [];
+          persistData();
+          showSettingsModal.value = false;
+        }
+      });
     }
 
     // ----------------------------------------------------
@@ -1580,6 +1719,16 @@ createApp({
       syncStatus,
       isLineClient,
       currentUser,
+      // 👑 方案 A：管理員狀態與權限操作
+      isCurrentTripAdmin,
+      showAdminLoginModal,
+      adminPasswordInput,
+      adminLoginMessage,
+      verifyAdminPassword,
+      openAdminLoginModal,
+      logoutAdmin,
+      openSettingsWithAdminCheck,
+      requireAdminPermission,
       // 多活動管理
       allTrips,
       currentTripId,
