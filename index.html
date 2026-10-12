@@ -68,59 +68,59 @@
     <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3 sm:p-4 mb-3 space-y-2.5">
       
       <!-- 第 1 列：小工具狀態列 (連線狀態 + 管理者標籤 + 鎖定開關 + 設定) -->
-      <div class="flex items-center justify-between text-xs pb-1.5 border-b border-stone-100 flex-wrap gap-1.5">
+      <div class="flex items-center justify-between text-xs pb-1.5 border-b border-stone-100 gap-1.5 overflow-hidden">
         <!-- 雲端同步狀態標籤 & 管理者徽章 -->
-        <div class="flex items-center gap-1.5 flex-wrap">
-          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+        <div class="flex items-center gap-1 min-w-0 flex-shrink">
+          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 flex-shrink-0">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            雲端即時同步
+            雲端
           </span>
-          <span v-else class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-stone-100 text-stone-700">
+          <span v-else class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 text-stone-600 flex-shrink-0">
             <span class="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
-            本地模式
+            本地
           </span>
 
-          <!-- 👑 管理者權限身分標籤 (方案 A：雙管理員切換) -->
+          <!-- 👑 管理者權限身分標籤 (精簡字樣，不爆版) -->
           <button 
             v-if="isCurrentTripAdmin" 
             @click="logoutAdmin"
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition flex-shrink-0"
             title="您目前具有管理者權限 (點擊可切換為普通團員視角)">
             <span>👑 管理者</span>
-            <span class="text-[10px] text-amber-700 underline font-normal">(切換)</span>
+            <span class="text-[9px] text-amber-700 underline font-normal">(切換)</span>
           </button>
           <button 
             v-else 
             @click="openAdminLoginModal('管理者登入')"
-            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition flex-shrink-0"
             title="副主揪或管理者點此輸入密碼即可管理活動">
             <i class="ph ph-shield-check text-xs"></i>
-            <span>我是管理者 (輸入密碼)</span>
+            <span>👑 登入管理</span>
           </button>
         </div>
 
-        <!-- 鎖定狀態 & 設定齒輪 -->
-        <div class="flex items-center gap-1.5">
+        <!-- 鎖定狀態 & 設定齒輪 (固定右側，絕不被擠出螢幕) -->
+        <div class="flex items-center gap-1 flex-shrink-0">
           <button 
             @click="toggleLockTrip" 
             :class="[
-              'px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition border',
+              'px-2 py-0.5 rounded-lg text-[11px] font-semibold flex items-center gap-0.5 transition border flex-shrink-0',
               currentTrip?.isLocked ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
             ]"
             :title="currentTrip?.isLocked ? '清單已鎖定，點擊解鎖 (需管理權限)' : '點擊鎖定清單防誤改 (需管理權限)'">
-            <i :class="['ph text-sm', currentTrip?.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open text-stone-500']"></i>
-            <span>{{ currentTrip?.isLocked ? '清單已鎖定' : '未鎖定' }}</span>
+            <i :class="['ph text-xs', currentTrip?.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open text-stone-500']"></i>
+            <span>{{ currentTrip?.isLocked ? '已鎖定' : '未鎖定' }}</span>
           </button>
 
           <button 
             @click="openSettingsWithAdminCheck" 
             :class="[
-              'p-1.5 rounded-lg transition border flex items-center gap-1 text-xs font-medium',
+              'p-1 px-1.5 rounded-lg transition border flex items-center gap-0.5 text-xs font-medium flex-shrink-0',
               isCurrentTripAdmin ? 'text-stone-700 hover:bg-stone-100 border-stone-200' : 'text-stone-500 bg-stone-50 hover:bg-stone-100 border-stone-200'
             ]"
             title="活動設定與成員名單 (需管理員權限)">
-            <i class="ph ph-gear text-base"></i>
-            <span v-if="!isCurrentTripAdmin" class="text-[10px] text-stone-400">🔒</span>
+            <i class="ph ph-gear text-sm"></i>
+            <span v-if="!isCurrentTripAdmin" class="text-[9px] text-stone-400">🔒</span>
           </button>
         </div>
       </div>
@@ -1722,9 +1722,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_14"></script>
-  <script src="./config.js?v=20261012_14"></script>
+  <script src="./default-items.js?v=20261012_15"></script>
+  <script src="./config.js?v=20261012_15"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_14"></script>
+  <script src="./app.js?v=20261012_15"></script>
 </body>
 </html>
