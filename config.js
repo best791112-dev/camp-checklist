@@ -13,14 +13,14 @@ window.APP_CONFIG = {
   // 預設活動名稱
   DEFAULT_EVENT_TITLE: "🌲 歡樂露營出遊裝備與食材備忘錄",
 
-  // Firebase Firestore 設定 (選填，填入後即可實現多人跨裝置即時同步)
-  // 前往 https://console.firebase.google.com 免費建立
+  // Firebase Firestore 設定 (啟用多人跨裝置即時同步)
   FIREBASE_CONFIG: {
-    apiKey: "",
-    authDomain: "",
-    projectId: "",
-    storageBucket: "",
-    messagingSenderId: "",
-    appId: ""
+    apiKey: "AIzaSyB9oe8wfbeYEwBdaU8eG9zuF4XcmXweMxQ",
+    authDomain: "my-camp-list.firebaseapp.com",
+    projectId: "my-camp-list",
+    storageBucket: "my-camp-list.firebasestorage.app",
+    messagingSenderId: "742920230350",
+    appId: "1:742920230350:web:82f4a9885df492044c079f",
+    measurementId: "G-PB1N9K60NJ"
   }
 };
