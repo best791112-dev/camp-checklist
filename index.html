@@ -41,6 +41,10 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+  <!-- Leaflet Map (免金鑰互動地圖精準選點) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     body {
       -webkit-tap-highlight-color: transparent;
@@ -1044,8 +1048,57 @@
           </div>
 
           <div>
-            <label class="block font-semibold text-stone-600 mb-1">Google 地圖搜尋關鍵字或網址</label>
-            <input v-model.trim="formStop.mapQuery" type="text" placeholder="例：內灣老街 或貼上 Google Maps 連結" class="w-full border rounded-xl px-3 py-2 text-xs">
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-stone-700">Google 地圖定位 / 精確位置</label>
+              <!-- 快捷地圖選點按鈕組 -->
+              <div class="flex items-center gap-1.5">
+                <button 
+                  type="button" 
+                  @click="openMapPicker('stop')" 
+                  class="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1 border border-emerald-300 transition">
+                  <i class="ph ph-map-pin"></i>
+                  <span>地圖選點</span>
+                </button>
+                <button 
+                  type="button" 
+                  @click="useCurrentLocation('stop')" 
+                  class="px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium text-[11px] flex items-center gap-1 transition"
+                  title="使用手機目前 GPS 座標">
+                  <i class="ph ph-crosshair"></i>
+                  <span>目前位置</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="relative">
+              <input 
+                v-model.trim="formStop.mapQuery" 
+                type="text" 
+                placeholder="點上方「地圖選點」或貼上 Google Maps 網址" 
+                class="w-full border border-stone-300 rounded-xl px-3 py-2 pr-16 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+              
+              <!-- 立即預覽驗證按鈕 -->
+              <button 
+                v-if="formStop.mapQuery || formStop.name" 
+                type="button" 
+                @click="openMapNavigation(formStop.mapQuery || formStop.name)" 
+                class="absolute right-1.5 top-1.5 px-2 py-1 bg-stone-100 hover:bg-emerald-100 text-stone-700 hover:text-emerald-800 rounded-lg text-[10px] font-bold transition flex items-center gap-0.5 border border-stone-200"
+                title="立即在 Google 地圖開啟確認位置是否正確">
+                <i class="ph ph-arrow-square-out"></i>
+                <span>預覽</span>
+              </button>
+            </div>
+
+            <!-- 精準度提示狀態 -->
+            <div class="mt-1 text-[11px]">
+              <div v-if="formStop.mapQuery?.startsWith('http')" class="text-emerald-700 flex items-center gap-1 font-semibold">
+                <i class="ph ph-check-circle-fill"></i>
+                <span>✅ 已鎖定專屬座標網址，導航直達精準點，絕不模糊搜尋！</span>
+              </div>
+              <div v-else class="text-stone-400 flex items-center justify-between">
+                <span>💡 建議點選「地圖選點」直接在地圖上挑選，避免模糊搜尋出錯。</span>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -1058,6 +1111,87 @@
             <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">儲存行程</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal 2B: 互動地圖精準選點器 (Leaflet) -->
+    <div v-if="showMapPickerModal" class="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-4 shadow-2xl flex flex-col max-h-[90vh]">
+        <!-- 頂部標題與關閉 -->
+        <div class="flex items-center justify-between pb-2.5 border-b border-stone-100">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xl">🗺️</span>
+            <div>
+              <h3 class="text-sm sm:text-base font-bold text-stone-800">在線上地圖點選精準位置</h3>
+              <p class="text-[11px] text-stone-400">移動地圖或直接點擊，大頭針鎖定精確經緯度</p>
+            </div>
+          </div>
+          <button @click="closeMapPicker" class="text-stone-400 hover:text-stone-600 p-1">
+            <i class="ph ph-x text-lg"></i>
+          </button>
+        </div>
+
+        <!-- 搜尋列 -->
+        <div class="flex gap-1.5 my-2.5">
+          <input 
+            v-model.trim="mapSearchKeyword" 
+            @keyup.enter="searchMapLocation" 
+            type="text" 
+            placeholder="搜尋地點 (例：虎尾科技大學、武陵農場)..." 
+            class="flex-1 border border-stone-300 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          <button 
+            type="button" 
+            @click="searchMapLocation" 
+            class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs transition flex items-center gap-1">
+            <i class="ph ph-magnifying-glass"></i>
+            <span>搜尋</span>
+          </button>
+          <button 
+            type="button" 
+            @click="useCurrentLocationInPicker" 
+            class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition border border-emerald-300 flex items-center gap-1"
+            title="定位到我現在的位置">
+            <i class="ph ph-crosshair"></i>
+            <span class="hidden sm:inline">GPS</span>
+          </button>
+        </div>
+
+        <!-- 地圖容器 -->
+        <div class="w-full h-64 sm:h-80 rounded-xl overflow-hidden border border-stone-200 relative bg-stone-100">
+          <div id="pickerMap" class="w-full h-full"></div>
+          <!-- 浮動提示 -->
+          <div class="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-[10px] pointer-events-none z-[500] backdrop-blur-xs">
+            💡 點選地圖任意位置，或拖曳紅色標記以微調
+          </div>
+        </div>
+
+        <!-- 選取資訊預覽 -->
+        <div class="bg-stone-50 p-2.5 rounded-xl border border-stone-200 mt-2.5 text-xs">
+          <div class="flex items-center justify-between text-stone-500 mb-0.5">
+            <span class="font-semibold text-stone-700">📍 目前選取位置：</span>
+            <span class="font-mono text-[11px] text-stone-500">{{ pickedCoords.lat.toFixed(5) }}, {{ pickedCoords.lng.toFixed(5) }}</span>
+          </div>
+          <div class="font-bold text-emerald-900 truncate">
+            {{ pickedAddressName || '正在選取或點擊地圖中...' }}
+          </div>
+        </div>
+
+        <!-- 底部確認按鈕 -->
+        <div class="pt-3 border-t border-stone-100 mt-2.5 flex gap-2">
+          <button 
+            type="button" 
+            @click="closeMapPicker" 
+            class="flex-1 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
+            取消
+          </button>
+          <button 
+            type="button" 
+            @click="confirmPickedLocation" 
+            class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1">
+            <i class="ph ph-check-circle"></i>
+            <span>確認使用此位置</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1404,12 +1538,30 @@
 
           <!-- 營地住宿地點 -->
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">營地 / 住宿名稱</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-stone-700">營地 / 住宿名稱</label>
+              <button 
+                type="button" 
+                @click="openMapPicker('campsite')" 
+                class="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1 border border-emerald-300 transition">
+                <i class="ph ph-map-pin"></i>
+                <span>地圖選點</span>
+              </button>
+            </div>
             <input v-model="campSiteInfo.name" type="text" placeholder="例：新竹尖石之美露營區" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">營地地址 / 定位</label>
-            <input v-model="campSiteInfo.address" type="text" placeholder="例：新竹縣尖石鄉..." class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-stone-700">營地地址 / 定位網址</label>
+              <button 
+                v-if="campSiteInfo.mapUrl || campSiteInfo.address || campSiteInfo.name" 
+                type="button" 
+                @click="openMapNavigation(campSiteInfo.mapUrl || campSiteInfo.address || campSiteInfo.name)" 
+                class="text-emerald-700 hover:underline text-[11px] font-semibold flex items-center gap-0.5">
+                <i class="ph ph-arrow-square-out"></i> 預覽位置
+              </button>
+            </div>
+            <input v-model="campSiteInfo.address" type="text" placeholder="例：新竹縣尖石鄉... 或貼上 Google Maps 網址" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
 
           <!-- 危險區域操作 -->
@@ -1438,9 +1590,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_11"></script>
-  <script src="./config.js?v=20261012_11"></script>
+  <script src="./default-items.js?v=20261012_12"></script>
+  <script src="./config.js?v=20261012_12"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_11"></script>
+  <script src="./app.js?v=20261012_12"></script>
 </body>
 </html>
