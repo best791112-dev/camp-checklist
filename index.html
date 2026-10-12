@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>露營出遊攜帶備忘錄 🏕️</title>
+  <title>露營出遊神隊友 🏕️ 攜帶備忘與行程手冊</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -58,217 +58,573 @@
 </head>
 <body class="bg-stone-100 text-stone-800 min-h-screen pb-28">
 
-  <div id="app" v-cloak class="max-w-2xl mx-auto px-4 pt-4">
+  <div id="app" v-cloak class="max-w-2xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4">
 
-    <!-- 頂部資訊列 -->
-    <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-4 mb-4">
-      <div class="flex items-center justify-between gap-3 mb-2">
+    <!-- 頂部資訊與連線狀態 -->
+    <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3.5 sm:p-4 mb-3">
+      <div class="flex items-center justify-between gap-2 mb-2">
         <div class="flex items-center gap-2 flex-1 min-w-0">
           <span class="text-2xl flex-shrink-0">🏕️</span>
-          <h1 class="text-lg font-bold text-stone-800 truncate" :title="eventTitle">
+          <h1 class="text-base sm:text-lg font-bold text-stone-800 truncate" :title="eventTitle">
             {{ eventTitle }}
           </h1>
         </div>
         
         <!-- 連線狀態 & 設定按鈕 -->
         <div class="flex items-center gap-1.5 flex-shrink-0">
-          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800" title="Firebase 即時雲端同步">
+          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             雲端即時
           </span>
-          <span v-else class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800" title="本地儲存模式，設定 Firebase 可多人同步">
+          <span v-else class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-            本地預覽
+            本地模式
           </span>
 
-          <button @click="showSettingsModal = true" class="p-2 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition" title="系統設定">
+          <button @click="showSettingsModal = true" class="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition" title="設定">
             <i class="ph ph-gear text-lg"></i>
           </button>
         </div>
       </div>
 
-      <!-- 使用者身分卡片 -->
-      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-2 border border-stone-100 text-sm">
+      <!-- 使用者身分資訊 -->
+      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-1.5 border border-stone-100 text-xs">
         <div class="flex items-center gap-2">
-          <img v-if="currentUser.pictureUrl" :src="currentUser.pictureUrl" class="w-7 h-7 rounded-full object-cover border border-stone-300" alt="avatar">
-          <div v-else class="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs">
+          <img v-if="currentUser.pictureUrl" :src="currentUser.pictureUrl" class="w-6 h-6 rounded-full object-cover border border-stone-300" alt="avatar">
+          <div v-else class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">
             {{ currentUser.displayName.slice(0, 1) }}
           </div>
-          <span class="text-stone-600 text-xs sm:text-sm">目前身分：</span>
-          <span class="font-semibold text-stone-800 text-xs sm:text-sm">{{ currentUser.displayName }}</span>
+          <span class="text-stone-500">目前身分：</span>
+          <span class="font-bold text-stone-800">{{ currentUser.displayName }}</span>
         </div>
-        <button @click="promptChangeName" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium underline">
+        <button @click="promptChangeName" class="text-emerald-700 hover:text-emerald-800 font-semibold underline">
           修改名字
         </button>
       </div>
 
-      <!-- 認領進度條 -->
-      <div class="mt-3">
-        <div class="flex justify-between items-center text-xs text-stone-500 mb-1">
-          <span>認領進度 ({{ claimedCount }} / {{ items.length }} 項)</span>
-          <span class="font-bold text-emerald-700">{{ progressPercent }}%</span>
-        </div>
-        <div class="w-full bg-stone-200 h-2.5 rounded-full overflow-hidden">
-          <div class="bg-emerald-600 h-full rounded-full transition-all duration-500" :style="{ width: progressPercent + '%' }"></div>
-        </div>
+      <!-- 頂部三大主分頁 Tab 切換導航 -->
+      <div class="grid grid-cols-3 gap-1.5 mt-3 pt-2.5 border-t border-stone-100">
+        <button 
+          @click="mainView = 'items'" 
+          :class="[
+            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition',
+            mainView === 'items' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+          ]">
+          <i class="ph ph-check-square-offset text-base"></i>
+          <span>裝備物資</span>
+        </button>
+
+        <button 
+          @click="mainView = 'carCheck'" 
+          :class="[
+            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition relative',
+            mainView === 'carCheck' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+          ]">
+          <i class="ph ph-car text-base"></i>
+          <span>上車點檢</span>
+          <span v-if="myCarCheckItems.length > 0" class="text-[10px] px-1.5 py-0.2 rounded-full"
+                :class="mainView === 'carCheck' ? 'bg-emerald-900 text-emerald-200' : 'bg-stone-200 text-stone-700'">
+            {{ carCheckCount.loaded }}/{{ carCheckCount.total }}
+          </span>
+        </button>
+
+        <button 
+          @click="mainView = 'trip'" 
+          :class="[
+            'py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition',
+            mainView === 'trip' ? 'bg-emerald-700 text-white shadow-sm' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+          ]">
+          <i class="ph ph-map-trifold text-base"></i>
+          <span>行程與記帳</span>
+        </button>
       </div>
     </header>
 
-    <!-- 分類頁籤 Tabs -->
-    <div class="flex gap-2 overflow-x-auto pb-2 custom-scrollbar mb-3">
-      <button 
-        v-for="tab in categories" 
-        :key="tab.id"
-        @click="currentCategory = tab.id"
-        :class="[
-          'px-3.5 py-2 rounded-xl text-xs md:text-sm font-medium whitespace-nowrap transition flex items-center gap-1.5 shadow-sm',
-          currentCategory === tab.id 
-            ? 'bg-emerald-700 text-white font-semibold' 
-            : 'bg-white text-stone-600 hover:bg-stone-50 border border-stone-200/80'
-        ]">
-        <span>{{ tab.icon }}</span>
-        <span>{{ tab.name }}</span>
-        <span class="ml-1 text-[11px] px-1.5 py-0.2 rounded-full" 
-              :class="currentCategory === tab.id ? 'bg-emerald-800 text-white' : 'bg-stone-100 text-stone-500'">
-          {{ getCategoryCount(tab.id) }}
-        </span>
-      </button>
-    </div>
-
-    <!-- 快捷過濾與搜尋 -->
-    <div class="flex items-center gap-2 mb-4">
-      <div class="relative flex-1">
-        <i class="ph ph-magnifying-glass absolute left-3 top-2.5 text-stone-400"></i>
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          placeholder="搜尋物品、負責人..." 
-          class="w-full bg-white border border-stone-200 rounded-xl pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+    <!-- ============================================================== -->
+    <!-- 視圖 1: 📋 裝備物資清單 (多人認領 + 指定指派) -->
+    <!-- ============================================================== -->
+    <div v-show="mainView === 'items'">
+      
+      <!-- 認領進度條 -->
+      <div class="bg-white rounded-2xl p-3 border border-stone-200/80 shadow-sm mb-3">
+        <div class="flex justify-between items-center text-xs text-stone-500 mb-1">
+          <span>物品認領進度 ({{ claimedCount }} / {{ items.length }} 項)</span>
+          <span class="font-bold text-emerald-700">{{ progressPercent }}%</span>
+        </div>
+        <div class="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
+          <div class="bg-emerald-600 h-full rounded-full transition-all duration-500" :style="{ width: progressPercent + '%' }"></div>
+        </div>
       </div>
-      <button 
-        @click="filterUnclaimedOnly = !filterUnclaimedOnly"
-        :class="[
-          'px-3 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
-          filterUnclaimedOnly 
-            ? 'bg-amber-50 border-amber-300 text-amber-800' 
-            : 'bg-white border-stone-200 text-stone-600'
-        ]">
-        <i class="ph ph-funnel"></i>
-        <span>只看未認領</span>
-      </button>
-    </div>
 
-    <!-- 物品清單列表 -->
-    <div v-if="filteredItems.length === 0" class="bg-white rounded-2xl p-8 text-center border border-stone-200/80 shadow-sm my-6">
-      <div class="text-4xl mb-2">📋</div>
-      <p class="text-stone-600 font-medium">目前沒有符合的項目</p>
-      <p class="text-stone-400 text-xs mt-1">直接從選單勾選用品與食材，省去手動打字的麻煩！</p>
-      <div class="mt-4 flex flex-wrap justify-center gap-2">
-        <button @click="openQuickPicker('favorites')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-semibold hover:bg-emerald-700 shadow-sm flex items-center gap-1.5">
-          <i class="ph ph-star-fill text-amber-300"></i>
-          <span>從「經常選擇」勾選</span>
-        </button>
-        <button @click="openQuickPicker('equipment')" class="px-3.5 py-2 bg-stone-100 text-stone-700 rounded-xl text-xs font-semibold hover:bg-stone-200 flex items-center gap-1">
-          <i class="ph ph-list-checks"></i>
-          <span>瀏覽用品選單庫</span>
+      <!-- 分類頁籤 Tabs -->
+      <div class="flex gap-1.5 overflow-x-auto pb-2 custom-scrollbar mb-2.5">
+        <button 
+          v-for="tab in categories" 
+          :key="tab.id"
+          @click="currentCategory = tab.id"
+          :class="[
+            'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1 shadow-sm',
+            currentCategory === tab.id 
+              ? 'bg-emerald-700 text-white' 
+              : 'bg-white text-stone-600 hover:bg-stone-50 border border-stone-200/80'
+          ]">
+          <span>{{ tab.icon }}</span>
+          <span>{{ tab.name }}</span>
+          <span class="text-[10px] ml-0.5 px-1 rounded-full" 
+                :class="currentCategory === tab.id ? 'bg-emerald-800 text-white' : 'bg-stone-100 text-stone-500'">
+            {{ getCategoryCount(tab.id) }}
+          </span>
         </button>
       </div>
-    </div>
 
-    <div v-else class="space-y-2.5">
-      <div 
-        v-for="item in filteredItems" 
-        :key="item.id"
-        class="bg-white rounded-2xl p-3.5 border border-stone-200/80 shadow-sm transition hover:border-emerald-200 flex flex-col gap-2">
+      <!-- 快捷過濾與搜尋 -->
+      <div class="flex items-center gap-2 mb-3">
+        <div class="relative flex-1">
+          <i class="ph ph-magnifying-glass absolute left-3 top-2 text-stone-400 text-xs"></i>
+          <input 
+            v-model="searchQuery" 
+            type="text" 
+            placeholder="搜尋物品、負責人..." 
+            class="w-full bg-white border border-stone-200 rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
         
-        <div class="flex items-start justify-between gap-2">
-          <!-- 物品品名與分類 -->
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-xs px-2 py-0.5 rounded-md font-medium" :class="getCategoryBadgeClass(item.category)">
-                {{ getCategoryName(item.category) }}
-              </span>
-              <h3 class="text-base font-semibold text-stone-800 truncate">
-                {{ item.name }}
-              </h3>
-              <span v-if="item.quantity" class="text-xs px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-medium">
-                {{ item.quantity }}
+        <button 
+          @click="filterMyItemsOnly = !filterMyItemsOnly"
+          :class="[
+            'px-2.5 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
+            filterMyItemsOnly ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
+          ]">
+          <i class="ph ph-user"></i>
+          <span>只看我帶的</span>
+        </button>
+
+        <button 
+          @click="filterUnclaimedOnly = !filterUnclaimedOnly"
+          :class="[
+            'px-2.5 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
+            filterUnclaimedOnly ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
+          ]">
+          <i class="ph ph-funnel"></i>
+          <span>待認領</span>
+        </button>
+      </div>
+
+      <!-- 物品清單 -->
+      <div v-if="filteredItems.length === 0" class="bg-white rounded-2xl p-8 text-center border border-stone-200/80 shadow-sm my-4">
+        <div class="text-3xl mb-2">📋</div>
+        <p class="text-stone-600 font-semibold text-sm">目前沒有符合的項目</p>
+        <p class="text-stone-400 text-xs mt-1">點擊下方「選單勾選庫」直接挑選裝備與食材！</p>
+        <button @click="openQuickPicker('favorites')" class="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm">
+          打開選單勾選庫
+        </button>
+      </div>
+
+      <div v-else class="space-y-2.5">
+        <div 
+          v-for="item in filteredItems" 
+          :key="item.id"
+          class="bg-white rounded-2xl p-3.5 border border-stone-200/80 shadow-sm transition hover:border-emerald-200 flex flex-col gap-2">
+          
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[11px] px-2 py-0.5 rounded-md font-medium" :class="getCategoryBadgeClass(item.category)">
+                  {{ getCategoryName(item.category) }}
+                </span>
+                <h3 class="text-sm sm:text-base font-semibold text-stone-800 truncate">
+                  {{ item.name }}
+                </h3>
+                <span v-if="item.quantity" class="text-[11px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600 font-medium">
+                  {{ item.quantity }}
+                </span>
+              </div>
+              <p v-if="item.note" class="text-xs text-stone-500 mt-1 flex items-center gap-1">
+                <i class="ph ph-info text-stone-400"></i>
+                <span>{{ item.note }}</span>
+              </p>
+            </div>
+
+            <div class="flex items-center gap-1">
+              <button 
+                @click="toggleFavorite(item.name)" 
+                class="p-1 rounded-lg hover:bg-stone-100 transition" 
+                :title="isFavorite(item.name) ? '取消常用' : '加為常用'">
+                <i :class="['ph text-base', isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300']"></i>
+              </button>
+              <button @click="openEditModal(item)" class="p-1 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition">
+                <i class="ph ph-pencil-simple text-sm"></i>
+              </button>
+              <button @click="deleteItem(item.id)" class="p-1 text-stone-400 hover:text-red-600 rounded-lg hover:bg-stone-100 transition">
+                <i class="ph ph-trash text-sm"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- 多人認領與指定人員狀態列 -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-stone-100 text-xs">
+            <!-- 認領人標籤名單 -->
+            <div class="flex items-center gap-1.5 flex-wrap min-w-0">
+              <span class="text-stone-400 text-[11px]">認領人：</span>
+              <template v-if="normalizeItemUsers(item).length > 0">
+                <span 
+                  v-for="u in normalizeItemUsers(item)" 
+                  :key="u.userId"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  <i class="ph ph-check text-[10px]"></i>
+                  <span>{{ u.displayName }}</span>
+                  <button 
+                    v-if="u.userId === currentUser.userId" 
+                    @click="unclaimItem(item, u.userId)" 
+                    class="text-emerald-500 hover:text-red-500 ml-0.5" 
+                    title="取消我的認領">
+                    <i class="ph ph-x-circle-fill"></i>
+                  </button>
+                </span>
+              </template>
+              <span v-else class="text-stone-400 inline-flex items-center gap-1 text-[11px]">
+                <i class="ph ph-clock"></i> 尚無人認領
               </span>
             </div>
-            <p v-if="item.note" class="text-xs text-stone-500 mt-1 flex items-center gap-1">
-              <i class="ph ph-info text-stone-400"></i>
-              <span>{{ item.note }}</span>
-            </p>
+
+            <!-- 操作按鈕：我來帶 / 我也帶 / 指定誰帶 -->
+            <div class="flex items-center gap-1.5 self-end sm:self-auto flex-shrink-0">
+              <!-- 我也帶 / 我來帶 -->
+              <button 
+                v-if="!isClaimedByMe(item)"
+                @click="claimItem(item)"
+                :class="[
+                  'px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs',
+                  normalizeItemUsers(item).length === 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                ]">
+                <i class="ph ph-plus-bold text-xs"></i>
+                <span>{{ normalizeItemUsers(item).length === 0 ? '我來帶！' : '我也帶' }}</span>
+              </button>
+
+              <!-- 指定成員負責 -->
+              <button 
+                @click="openAssignModal(item)"
+                class="px-2 py-1 rounded-lg text-xs font-medium bg-stone-100 text-stone-600 hover:bg-stone-200 transition flex items-center gap-1"
+                title="指定特定群友負責帶">
+                <i class="ph ph-user-plus"></i>
+                <span>指定負責人</span>
+              </button>
+            </div>
           </div>
 
-          <!-- 常用星號 & 編輯 / 刪除 -->
-          <div class="flex items-center gap-1">
-            <button 
-              @click="toggleFavorite(item.name)" 
-              class="p-1.5 rounded-lg hover:bg-stone-100 transition" 
-              :title="isFavorite(item.name) ? '已加入經常選擇' : '加入經常選擇'">
-              <i :class="[
-                'ph text-base transition', 
-                isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
-              ]"></i>
-            </button>
-            <button @click="openEditModal(item)" class="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition" title="編輯">
-              <i class="ph ph-pencil-simple text-sm"></i>
-            </button>
-            <button @click="deleteItem(item.id)" class="p-1.5 text-stone-400 hover:text-red-600 rounded-lg hover:bg-stone-100 transition" title="刪除">
-              <i class="ph ph-trash text-sm"></i>
-            </button>
-          </div>
         </div>
-
-        <!-- 認領狀態區塊 -->
-        <div class="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
-          <!-- 認領人資訊 -->
-          <div class="flex items-center gap-1.5 min-w-0">
-            <template v-if="item.assignedTo">
-              <img v-if="item.assignedUserPicture" :src="item.assignedUserPicture" class="w-5 h-5 rounded-full object-cover border border-stone-300" alt="avatar">
-              <div v-else class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px]">
-                {{ item.assignedUserName.slice(0, 1) }}
-              </div>
-              <span class="text-stone-500">認領人：</span>
-              <span class="font-bold text-emerald-800 truncate">{{ item.assignedUserName }}</span>
-            </template>
-            <template v-else>
-              <span class="inline-flex items-center gap-1 text-stone-400">
-                <i class="ph ph-clock text-xs"></i> 尚無人認領
-              </span>
-            </template>
-          </div>
-
-          <!-- 認領動作按鈕 -->
-          <div>
-            <button 
-              v-if="item.assignedTo === currentUser.userId"
-              @click="unclaimItem(item)"
-              class="px-3 py-1 rounded-lg text-xs font-semibold bg-stone-100 text-stone-600 hover:bg-stone-200 transition">
-              取消認領
-            </button>
-            <button 
-              v-else-if="item.assignedTo"
-              @click="claimItem(item, true)"
-              class="px-2.5 py-1 rounded-lg text-xs font-medium text-stone-400 hover:text-amber-700 hover:bg-amber-50 transition"
-              title="改由我帶">
-              由我接手
-            </button>
-            <button 
-              v-else
-              @click="claimItem(item)"
-              class="px-3.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition flex items-center gap-1">
-              <i class="ph ph-check-bold text-xs"></i>
-              <span>我來帶！</span>
-            </button>
-          </div>
-        </div>
-
       </div>
     </div>
 
-    <!-- 底部懸浮快速操作列 -->
+    <!-- ============================================================== -->
+    <!-- 視圖 2: 🚗 上車點檢 (個人專屬行前行李檢查) -->
+    <!-- ============================================================== -->
+    <div v-show="mainView === 'carCheck'" class="space-y-3">
+      
+      <!-- 上車進度卡片 -->
+      <div class="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl">🚗</span>
+            <div>
+              <h2 class="text-sm font-bold text-stone-800">
+                {{ currentUser.displayName }} 的上車行李點檢
+              </h2>
+              <p class="text-[11px] text-stone-400">出門放後車廂時逐一打勾，絕不漏帶！</p>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-base font-extrabold text-emerald-700">{{ carCheckCount.percent }}%</div>
+            <div class="text-[10px] text-stone-400">{{ carCheckCount.loaded }} / {{ carCheckCount.total }} 項</div>
+          </div>
+        </div>
+
+        <div class="w-full bg-stone-100 h-2.5 rounded-full overflow-hidden">
+          <div class="bg-emerald-600 h-full rounded-full transition-all duration-500" :style="{ width: carCheckCount.percent + '%' }"></div>
+        </div>
+
+        <!-- 全部上車恭喜卡 -->
+        <div v-if="carCheckCount.total > 0 && carCheckCount.loaded === carCheckCount.total" 
+             class="mt-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-emerald-800 text-xs font-bold">
+          <span class="text-lg">🎉</span>
+          <span>太棒了！您的所有行李裝備均已全部上車，出發露營去！</span>
+        </div>
+      </div>
+
+      <!-- 點檢清單列表 -->
+      <div v-if="myCarCheckItems.length === 0" class="bg-white rounded-2xl p-8 text-center border border-stone-200/80 shadow-sm">
+        <div class="text-3xl mb-2">🎒</div>
+        <p class="text-stone-600 font-semibold text-sm">您目前尚未認領任何物品</p>
+        <p class="text-stone-400 text-xs mt-1">請先到「裝備物資」分頁點選「我來帶」認領裝備，或查看個人自備物品！</p>
+        <button @click="mainView = 'items'" class="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700">
+          前往認領物資
+        </button>
+      </div>
+
+      <div v-else class="space-y-2">
+        <div 
+          v-for="item in myCarCheckItems" 
+          :key="item.id"
+          @click="toggleCarLoaded(item.id)"
+          :class="[
+            'p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer select-none shadow-xs',
+            isCarLoaded(item.id) 
+              ? 'bg-emerald-50/70 border-emerald-300' 
+              : 'bg-white border-stone-200 hover:border-emerald-200'
+          ]">
+          
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <!-- 勾選方框 -->
+            <div class="text-2xl flex-shrink-0">
+              <i v-if="isCarLoaded(item.id)" class="ph ph-check-square-fill text-emerald-600"></i>
+              <i v-else class="ph ph-square text-stone-300"></i>
+            </div>
+
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs px-2 py-0.5 rounded-md font-medium" :class="getCategoryBadgeClass(item.category)">
+                  {{ getCategoryName(item.category) }}
+                </span>
+                <span class="font-bold text-sm text-stone-800" :class="{ 'line-through text-stone-400': isCarLoaded(item.id) }">
+                  {{ item.name }}
+                </span>
+                <span v-if="item.quantity" class="text-[11px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
+                  {{ item.quantity }}
+                </span>
+              </div>
+              <p v-if="item.note" class="text-xs text-stone-400 mt-0.5 truncate">
+                {{ item.note }}
+              </p>
+            </div>
+          </div>
+
+          <div class="text-right flex-shrink-0">
+            <span v-if="isCarLoaded(item.id)" class="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+              🚗 已上車
+            </span>
+            <span v-else class="text-xs font-medium text-stone-400 bg-stone-100 px-2 py-1 rounded-lg">
+              待放車上
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 視圖 3: 🗺️ 行程與記帳 (多天數行程 + 營地導航 + AA記帳) -->
+    <!-- ============================================================== -->
+    <div v-show="mainView === 'trip'" class="space-y-4">
+      
+      <!-- 營地 / 住宿資訊卡片 -->
+      <div class="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-sm">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <div>
+            <div class="flex items-center gap-1.5 text-xs text-stone-400 mb-0.5">
+              <span>⛺ 營地住宿地點</span>
+            </div>
+            <h2 class="text-base font-bold text-stone-800">
+              {{ campSiteInfo.name }}
+            </h2>
+          </div>
+          <button 
+            @click="openMapNavigation(campSiteInfo.address || campSiteInfo.name)"
+            class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm flex-shrink-0">
+            <i class="ph ph-navigation-arrow-fill"></i>
+            <span>Google 導航</span>
+          </button>
+        </div>
+
+        <div class="space-y-1 text-xs text-stone-600 pt-2 border-t border-stone-100">
+          <p class="flex items-center gap-1">
+            <i class="ph ph-map-pin text-stone-400"></i>
+            <span>地址：{{ campSiteInfo.address }}</span>
+          </p>
+          <div class="flex gap-4">
+            <p>⏰ 入營：<span class="font-semibold text-stone-800">{{ campSiteInfo.checkInTime }}</span></p>
+            <p>⏰ 退場：<span class="font-semibold text-stone-800">{{ campSiteInfo.checkOutTime }}</span></p>
+          </div>
+          <p v-if="campSiteInfo.note" class="text-stone-400 pt-0.5">
+            📝 備註：{{ campSiteInfo.note }}
+          </p>
+        </div>
+      </div>
+
+      <!-- 多天數行程表 -->
+      <div class="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-lg">🗺️</span>
+            <h3 class="text-sm sm:text-base font-bold text-stone-800">多天數行程規劃</h3>
+          </div>
+          <button 
+            @click="addTripDay"
+            class="text-xs px-2.5 py-1 rounded-lg bg-stone-100 text-stone-700 hover:bg-stone-200 font-semibold flex items-center gap-1">
+            <i class="ph ph-plus"></i>
+            <span>新增天數 (Day {{ tripDays.length + 1 }})</span>
+          </button>
+        </div>
+
+        <!-- 天數分頁 Tabs -->
+        <div class="flex gap-1.5 overflow-x-auto pb-2 custom-scrollbar mb-3">
+          <button 
+            v-for="(day, dIndex) in tripDays" 
+            :key="day.dayNumber"
+            @click="currentDayIndex = dIndex"
+            :class="[
+              'px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1',
+              currentDayIndex === dIndex ? 'bg-stone-800 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+            ]">
+            <span>Day {{ day.dayNumber }}</span>
+          </button>
+        </div>
+
+        <!-- 當前天數行程時間軸 -->
+        <div v-if="tripDays[currentDayIndex]" class="space-y-3">
+          <div class="flex items-center justify-between text-xs pb-2 border-b border-stone-100">
+            <span class="font-bold text-stone-700">{{ tripDays[currentDayIndex].title }}</span>
+            <div class="flex items-center gap-2">
+              <button 
+                @click="openAddStopModal(currentDayIndex)"
+                class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1">
+                <i class="ph ph-plus"></i>
+                <span>新增景點/餐廳</span>
+              </button>
+              <button 
+                v-if="tripDays.length > 1"
+                @click="removeTripDay(currentDayIndex)" 
+                class="text-stone-400 hover:text-red-500 p-1" 
+                title="刪除此天">
+                <i class="ph ph-trash"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- 自動推算的時間軸列表 -->
+          <div class="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-stone-200">
+            <div 
+              v-for="(stop, sIndex) in getCalculatedStops(tripDays[currentDayIndex].stops)" 
+              :key="stop.id"
+              class="relative bg-stone-50 rounded-xl p-3 border border-stone-200/80">
+              
+              <!-- 時間軸節點 -->
+              <span class="absolute -left-6 top-3.5 w-3 h-3 rounded-full bg-emerald-600 border-2 border-white"></span>
+
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-bold text-stone-800">{{ stop.name }}</span>
+                    <!-- 到達與出發時間 -->
+                    <span class="text-[11px] font-mono px-2 py-0.5 bg-white border border-stone-200 rounded text-stone-700 font-semibold">
+                      ⏰ {{ stop.arrivalTime }} 到達
+                      <template v-if="stop.stayMin > 0">
+                        → {{ stop.departureTime }} 出發
+                      </template>
+                    </span>
+                  </div>
+
+                  <p v-if="stop.note" class="text-xs text-stone-500 mt-1">
+                    {{ stop.note }}
+                  </p>
+
+                  <!-- 停留與車程資訊 -->
+                  <div class="flex items-center gap-3 mt-1.5 text-[11px] text-stone-400">
+                    <span v-if="stop.stayMin > 0">⏳ 停留 {{ stop.stayMin }} 分鐘</span>
+                    <span v-if="stop.travelMin > 0">🚗 下站車程 {{ stop.travelMin }} 分鐘</span>
+                  </div>
+                </div>
+
+                <!-- 動作按鈕 -->
+                <div class="flex items-center gap-1 flex-shrink-0">
+                  <button 
+                    @click="openMapNavigation(stop.mapQuery || stop.name)"
+                    class="p-1.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition" 
+                    title="導航至此處">
+                    <i class="ph ph-map-pin text-base"></i>
+                  </button>
+                  <button 
+                    @click="openEditStopModal(currentDayIndex, sIndex)" 
+                    class="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition" 
+                    title="編輯">
+                    <i class="ph ph-pencil-simple text-sm"></i>
+                  </button>
+                  <button 
+                    @click="deleteStop(currentDayIndex, sIndex)" 
+                    class="p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-stone-100 transition" 
+                    title="刪除">
+                    <i class="ph ph-trash text-sm"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 💰 公費 AA 記帳專區 -->
+      <div class="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-1.5">
+            <span class="text-lg">💰</span>
+            <h3 class="text-sm sm:text-base font-bold text-stone-800">公費記帳與 AA 分攤</h3>
+          </div>
+          <button 
+            @click="openAddExpenseModal"
+            class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs">
+            <i class="ph ph-plus-bold"></i>
+            <span>記一筆</span>
+          </button>
+        </div>
+
+        <!-- 記帳總覽統計 -->
+        <div class="grid grid-cols-2 gap-2 bg-stone-50 rounded-xl p-3 border border-stone-200/80 mb-3 text-xs">
+          <div>
+            <span class="text-stone-500">總支出金額：</span>
+            <div class="text-base font-black text-stone-800">NT$ {{ totalExpense.toLocaleString() }}</div>
+          </div>
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-stone-500">分攤人數：</span>
+              <input 
+                v-model.number="splitPeopleCount" 
+                type="number" 
+                min="1" 
+                @change="persistData"
+                class="w-12 text-center bg-white border border-stone-300 rounded px-1 py-0.5 text-xs font-bold">
+            </div>
+            <div class="text-base font-black text-emerald-700">每人 NT$ {{ perPersonExpense.toLocaleString() }}</div>
+          </div>
+        </div>
+
+        <!-- 記帳明細列表 -->
+        <div v-if="expenseList.length === 0" class="text-center py-4 text-xs text-stone-400">
+          目前尚無花費記錄，點擊右上角「記一筆」新增！
+        </div>
+
+        <div v-else class="space-y-1.5">
+          <div 
+            v-for="exp in expenseList" 
+            :key="exp.id"
+            class="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl text-xs border border-stone-200/60">
+            <div>
+              <div class="font-bold text-stone-800">{{ exp.title }}</div>
+              <div class="text-[11px] text-stone-400 mt-0.5">
+                <span>{{ exp.category }}</span> • <span>由 {{ exp.paidBy }} 代墊</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-stone-800">NT$ {{ Number(exp.amount).toLocaleString() }}</span>
+              <button @click="deleteExpense(exp.id)" class="text-stone-400 hover:text-red-500 p-1">
+                <i class="ph ph-trash text-sm"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 底部固定操作導航列 (無論在各頁籤均可快速呼叫) -->
+    <!-- ============================================================== -->
     <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-2.5 z-30 shadow-lg">
       <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
         
@@ -285,10 +641,9 @@
         <button 
           type="button"
           @click="openAddModal" 
-          class="py-2.5 px-3 bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer select-none"
-          title="手動自訂輸入">
+          class="py-2.5 px-3 bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer select-none">
           <i class="ph ph-plus-circle text-base text-stone-500"></i>
-          <span>自訂新增</span>
+          <span>自訂物品</span>
         </button>
 
         <!-- 發送 / 複製清單 -->
@@ -297,30 +652,149 @@
           @click="shareToLineOrExport" 
           class="py-2.5 px-3 bg-stone-800 hover:bg-stone-900 active:bg-black text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer select-none">
           <i class="ph ph-share-network text-base text-emerald-400"></i>
-          <span class="hidden sm:inline">發送/複製摘要</span>
-          <span class="sm:hidden">摘要</span>
+          <span>LINE 摘要</span>
         </button>
       </div>
     </nav>
 
-    <!-- Modal 1: 選單快速勾選庫 (Quick Picker) -->
+    <!-- ============================================================== -->
+    <!-- Modals 彈窗群 -->
+    <!-- ============================================================== -->
+
+    <!-- Modal 1: 指定誰帶 -->
+    <div v-if="showAssignModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl">
+        <h3 class="text-base font-bold text-stone-800 mb-2">
+          👉 指定負責人
+        </h3>
+        <p class="text-xs text-stone-500 mb-3">
+          指定群友帶：<span class="font-bold text-emerald-800">{{ assigningItem?.name }}</span>
+        </p>
+
+        <form @submit.prevent="confirmAssignToUser" class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-stone-600 mb-1">負責人姓名/暱稱</label>
+            <input 
+              v-model.trim="assignTargetName" 
+              type="text" 
+              placeholder="例：大華、阿妹、老張..." 
+              required
+              class="w-full border border-stone-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button 
+              type="button" 
+              @click="showAssignModal = false" 
+              class="flex-1 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
+              取消
+            </button>
+            <button 
+              type="submit" 
+              class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-md">
+              確認指定
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal 2: 新增/編輯行程地點 -->
+    <div v-if="showStopModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs">
+        <h3 class="text-sm font-bold text-stone-800 mb-3">
+          {{ editingStopIndex >= 0 ? '編輯行程點' : '新增景點 / 餐廳' }}
+        </h3>
+
+        <form @submit.prevent="saveStop" class="space-y-3">
+          <div>
+            <label class="block font-semibold text-stone-600 mb-1">地點名稱 *</label>
+            <input v-model.trim="formStop.name" type="text" placeholder="例：內灣老街、好市多新竹店..." required class="w-full border rounded-xl px-3 py-2 text-xs">
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div>
+              <label class="block font-semibold text-stone-600 mb-1">出發時間 (首站必填)</label>
+              <input v-model="formStop.depTime" type="time" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+            </div>
+            <div>
+              <label class="block font-semibold text-stone-600 mb-1">停留時間 (分)</label>
+              <input v-model.number="formStop.stayMin" type="number" min="0" step="5" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+            </div>
+            <div>
+              <label class="block font-semibold text-stone-600 mb-1">下站車程 (分)</label>
+              <input v-model.number="formStop.travelMin" type="number" min="0" step="5" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-stone-600 mb-1">Google 地圖搜尋關鍵字或網址</label>
+            <input v-model.trim="formStop.mapQuery" type="text" placeholder="例：內灣老街 或貼上 Google Maps 連結" class="w-full border rounded-xl px-3 py-2 text-xs">
+          </div>
+
+          <div>
+            <label class="block font-semibold text-stone-600 mb-1">備註說明</label>
+            <input v-model.trim="formStop.note" type="text" placeholder="例：吃野薑花粽、停車場在橋下..." class="w-full border rounded-xl px-3 py-2 text-xs">
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button type="button" @click="showStopModal = false" class="flex-1 py-2 rounded-xl border text-stone-600 font-semibold">取消</button>
+            <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">儲存行程</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal 3: 新增記帳花費 -->
+    <div v-if="showExpenseModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl text-xs">
+        <h3 class="text-sm font-bold text-stone-800 mb-3">💰 記一筆公費花費</h3>
+        <form @submit.prevent="saveExpense" class="space-y-3">
+          <div>
+            <label class="block font-semibold text-stone-600 mb-1">花費項目 *</label>
+            <input v-model.trim="formExpense.title" type="text" placeholder="例：好市多買肉、營位訂金..." required class="w-full border rounded-xl px-3 py-2 text-xs">
+          </div>
+          <div>
+            <label class="block font-semibold text-stone-600 mb-1">金額 (NT$) *</label>
+            <input v-model.number="formExpense.amount" type="number" min="1" placeholder="例：2400" required class="w-full border rounded-xl px-3 py-2 text-xs">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block font-semibold text-stone-600 mb-1">代墊人員</label>
+              <input v-model.trim="formExpense.paidBy" type="text" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+            </div>
+            <div>
+              <label class="block font-semibold text-stone-600 mb-1">分類</label>
+              <select v-model="formExpense.category" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+                <option value="食材採買">食材採買</option>
+                <option value="營位住宿">營位住宿</option>
+                <option value="交通油資">交通油資</option>
+                <option value="門票體驗">門票體驗</option>
+                <option value="其他雜支">其他雜支</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex gap-2 pt-2">
+            <button type="button" @click="showExpenseModal = false" class="flex-1 py-2 rounded-xl border text-stone-600 font-semibold">取消</button>
+            <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">確認記帳</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal 4: 選單快速勾選庫 (Quick Picker) -->
     <div v-if="showQuickPickerModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-5 shadow-2xl flex flex-col max-h-[90vh]">
-        
-        <!-- 標題列 -->
         <div class="flex justify-between items-center mb-3">
           <div class="flex items-center gap-2">
             <span class="text-xl">📋</span>
-            <h3 class="text-base font-bold text-stone-800">
-              用品與食材選單庫
-            </h3>
+            <h3 class="text-base font-bold text-stone-800">用品與食材選單庫</h3>
           </div>
           <button @click="showQuickPickerModal = false" class="text-stone-400 hover:text-stone-600 p-1">
             <i class="ph ph-x text-lg"></i>
           </button>
         </div>
 
-        <!-- 選單庫分類 Tabs -->
         <div class="flex gap-1.5 overflow-x-auto pb-2 custom-scrollbar mb-2.5">
           <button 
             v-for="tab in pickerTabs" 
@@ -338,7 +812,6 @@
           </button>
         </div>
 
-        <!-- 搜尋與快捷操作 -->
         <div class="flex items-center gap-2 mb-3">
           <div class="relative flex-1">
             <i class="ph ph-magnifying-glass absolute left-3 top-2 text-stone-400 text-xs"></i>
@@ -348,45 +821,28 @@
               placeholder="搜尋選單庫物品..." 
               class="w-full bg-stone-50 border border-stone-200 rounded-xl pl-8 pr-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
           </div>
-
           <button 
             v-if="pickerCategory === 'favorites'"
             @click="addAllFavoritesToCurrentList"
-            class="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl text-[11px] font-semibold hover:bg-amber-100 flex items-center gap-1 flex-shrink-0"
-            title="把所有常用品項一次加入">
+            class="px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-300 rounded-xl text-[11px] font-semibold hover:bg-amber-100 flex items-center gap-1 flex-shrink-0">
             <i class="ph ph-lightning text-xs"></i>
             <span>一鍵全加</span>
           </button>
-
-          <button 
-            v-else
-            @click="selectAllAvailableInTab"
-            class="px-2.5 py-1 bg-stone-100 text-stone-700 rounded-xl text-[11px] font-medium hover:bg-stone-200 flex items-center gap-1 flex-shrink-0">
-            <i class="ph ph-checks text-xs"></i>
-            <span>本頁全選</span>
-          </button>
         </div>
 
-        <!-- 勾選清單列表 (依子分類分組) -->
+        <!-- 依子分類分組渲染 -->
         <div class="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 pr-1 min-h-[220px]">
           <div v-if="groupedPickerLibrary.length === 0" class="text-center py-8 text-stone-400 text-xs">
-            <span v-if="pickerCategory === 'favorites'">
-              ⭐ 您尚未收藏任何「經常選擇」項目！<br>可以在其他分頁中點擊星號 ⭐ 加入常用。
-            </span>
-            <span v-else>找不到符合條件的項目。</span>
+            找不到符合條件的項目。
           </div>
 
-          <!-- 各子分類分組 -->
           <div v-for="group in groupedPickerLibrary" :key="group.title" class="space-y-1.5">
-            <!-- 分組標題列 -->
             <div class="flex items-center justify-between px-1 text-xs pt-1">
               <span class="font-bold text-stone-700 flex items-center gap-1.5">
                 <span class="w-1.5 h-3 bg-emerald-600 rounded-full inline-block"></span>
                 <span>{{ group.title }}</span>
                 <span class="text-[11px] font-normal text-stone-400">({{ group.items.length }})</span>
               </span>
-
-              <!-- 本組全選按鈕 -->
               <button 
                 type="button"
                 @click="toggleSelectGroup(group.items)"
@@ -395,7 +851,6 @@
               </button>
             </div>
 
-            <!-- 該組物品卡片清單 -->
             <div class="space-y-1.5">
               <div 
                 v-for="item in group.items" 
@@ -407,95 +862,48 @@
                     ? 'bg-stone-50 border-stone-200 opacity-60 cursor-not-allowed'
                     : (isPickerItemSelected(item) ? 'bg-emerald-50/80 border-emerald-500 shadow-xs' : 'bg-white border-stone-200 hover:border-emerald-300')
                 ]">
-                
                 <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                  <!-- Checkbox -->
                   <div class="flex-shrink-0">
-                    <span v-if="isInCurrentList(item.name)" class="text-stone-400">
-                      <i class="ph ph-check-circle-fill text-base text-stone-400"></i>
-                    </span>
-                    <span v-else-if="isPickerItemSelected(item)" class="text-emerald-600">
-                      <i class="ph ph-check-square-fill text-base"></i>
-                    </span>
-                    <span v-else class="text-stone-300">
-                      <i class="ph ph-square text-base"></i>
-                    </span>
+                    <span v-if="isInCurrentList(item.name)" class="text-stone-400"><i class="ph ph-check-circle-fill text-base text-stone-400"></i></span>
+                    <span v-else-if="isPickerItemSelected(item)" class="text-emerald-600"><i class="ph ph-check-square-fill text-base"></i></span>
+                    <span v-else class="text-stone-300"><i class="ph ph-square text-base"></i></span>
                   </div>
-
-                  <!-- 資訊 -->
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-1.5 flex-wrap">
                       <span class="font-semibold text-stone-800 text-xs">{{ item.name }}</span>
-                      <span v-if="item.quantity" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
-                        {{ item.quantity }}
-                      </span>
-                      <span v-if="isInCurrentList(item.name)" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-medium">
-                        已在清單中
-                      </span>
+                      <span v-if="item.quantity" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">{{ item.quantity }}</span>
+                      <span v-if="isInCurrentList(item.name)" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-medium">已在清單中</span>
                     </div>
-                    <p v-if="item.note" class="text-[11px] text-stone-400 truncate mt-0.5">
-                      {{ item.note }}
-                    </p>
+                    <p v-if="item.note" class="text-[11px] text-stone-400 truncate mt-0.5">{{ item.note }}</p>
                   </div>
                 </div>
-
-                <!-- 星號 (切換經常選擇) -->
-                <button 
-                  type="button"
-                  @click.stop="toggleFavorite(item.name)" 
-                  class="p-1 rounded hover:bg-stone-100 transition flex-shrink-0"
-                  :title="isFavorite(item.name) ? '取消常用' : '加為常用'">
-                  <i :class="[
-                    'ph text-base transition',
-                    isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
-                  ]"></i>
+                <button type="button" @click.stop="toggleFavorite(item.name)" class="p-1 rounded hover:bg-stone-100 transition flex-shrink-0">
+                  <i :class="['ph text-base', isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300']"></i>
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 底部確認按鈕 -->
         <div class="pt-3 border-t border-stone-100 mt-2 flex items-center justify-between gap-2">
-          <div class="text-xs text-stone-500">
-            已勾選 <span class="font-bold text-emerald-700 text-sm">{{ selectedPickerItems.length }}</span> 項
-          </div>
+          <div class="text-xs text-stone-500">已選 <span class="font-bold text-emerald-700 text-sm">{{ selectedPickerItems.length }}</span> 項</div>
           <div class="flex gap-2">
-            <button 
-              @click="showQuickPickerModal = false" 
-              class="px-3.5 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs hover:bg-stone-50">
-              關閉
-            </button>
+            <button @click="showQuickPickerModal = false" class="px-3.5 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold text-xs">關閉</button>
             <button 
               @click="addSelectedToCurrentList" 
               :disabled="selectedPickerItems.length === 0"
-              :class="[
-                'px-4 py-2 rounded-xl text-xs font-bold shadow-md transition flex items-center gap-1.5',
-                selectedPickerItems.length > 0
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
-                  : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-              ]">
-              <i class="ph ph-plus-bold"></i>
-              <span>加入清單 ({{ selectedPickerItems.length }})</span>
+              class="px-4 py-2 rounded-xl text-xs font-bold shadow-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-stone-200 disabled:text-stone-400">
+              加入清單 ({{ selectedPickerItems.length }})
             </button>
           </div>
         </div>
-
       </div>
     </div>
 
-    <!-- Modal 2: 手動自訂 / 編輯物品 -->
-    <div v-if="showItemModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <!-- Modal 5: 自訂/編輯物品 -->
+    <div v-if="showItemModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-base font-bold text-stone-800">
-            {{ editingItem ? '編輯物品' : '手動自訂攜帶物品' }}
-          </h3>
-          <button @click="showItemModal = false" class="text-stone-400 hover:text-stone-600">
-            <i class="ph ph-x text-lg"></i>
-          </button>
-        </div>
-
+        <h3 class="text-base font-bold text-stone-800 mb-3">{{ editingItem ? '編輯物品' : '手動自訂攜帶物品' }}</h3>
         <form @submit.prevent="saveItem" class="space-y-3.5 text-sm">
           <div>
             <label class="block text-xs font-semibold text-stone-600 mb-1">分類類別 *</label>
@@ -503,90 +911,47 @@
               <label 
                 v-for="cat in itemCategoryOptions" 
                 :key="cat.id" 
-                :class="[
-                  'border rounded-xl p-2 flex items-center gap-2 cursor-pointer transition text-xs font-medium',
-                  formItem.category === cat.id ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-stone-200 text-stone-600'
-                ]">
+                :class="['border rounded-xl p-2 flex items-center gap-2 cursor-pointer text-xs font-medium', formItem.category === cat.id ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-stone-200 text-stone-600']">
                 <input type="radio" v-model="formItem.category" :value="cat.id" class="hidden">
                 <span>{{ cat.icon }}</span>
                 <span>{{ cat.name }}</span>
               </label>
             </div>
           </div>
-
           <div>
             <label class="block text-xs font-semibold text-stone-600 mb-1">物品名稱 *</label>
-            <input 
-              v-model.trim="formItem.name" 
-              type="text" 
-              placeholder="例：帳篷、牛小排、卡式瓦斯罐..." 
-              required
-              class="w-full border border-stone-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <input v-model.trim="formItem.name" type="text" placeholder="例：營帳、卡式瓦斯罐..." required class="w-full border rounded-xl px-3 py-2">
           </div>
-
           <div>
             <label class="block text-xs font-semibold text-stone-600 mb-1">數量 / 規格</label>
-            <input 
-              v-model.trim="formItem.quantity" 
-              type="text" 
-              placeholder="例：1 頂、4 罐、2 大包..." 
-              class="w-full border border-stone-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <input v-model.trim="formItem.quantity" type="text" placeholder="例：1 頂、4 罐..." class="w-full border rounded-xl px-3 py-2">
           </div>
-
           <div>
             <label class="block text-xs font-semibold text-stone-600 mb-1">備註說明</label>
-            <input 
-              v-model.trim="formItem.note" 
-              type="text" 
-              placeholder="例：需先充電、放冰桶底層..." 
-              class="w-full border border-stone-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+            <input v-model.trim="formItem.note" type="text" placeholder="例：放後車廂..." class="w-full border rounded-xl px-3 py-2">
           </div>
-
           <div class="pt-2 flex gap-2">
-            <button 
-              type="button" 
-              @click="showItemModal = false" 
-              class="flex-1 py-2 rounded-xl border border-stone-200 text-stone-600 font-semibold hover:bg-stone-50">
-              取消
-            </button>
-            <button 
-              type="submit" 
-              class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md shadow-emerald-600/20">
-              確認儲存
-            </button>
+            <button type="button" @click="showItemModal = false" class="flex-1 py-2 rounded-xl border text-stone-600 font-semibold">取消</button>
+            <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">確認儲存</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- Modal 3: 摘要與匯出 -->
-    <div v-if="showExportModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <!-- Modal 6: 摘要與匯出 -->
+    <div v-if="showExportModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl flex flex-col max-h-[85vh]">
-        <div class="flex justify-between items-center mb-3">
+        <div class="flex justify-between items-center mb-2">
           <h3 class="text-base font-bold text-stone-800">📋 清單摘要與分享</h3>
-          <button @click="showExportModal = false" class="text-stone-400 hover:text-stone-600">
-            <i class="ph ph-x text-lg"></i>
-          </button>
+          <button @click="showExportModal = false" class="text-stone-400 hover:text-stone-600"><i class="ph ph-x text-lg"></i></button>
         </div>
-
-        <p class="text-xs text-stone-500 mb-2">可直接複製文字貼到 LINE 群組，或點擊發送按鈕：</p>
-
-        <textarea 
-          readonly 
-          :value="generatedSummaryText" 
-          class="w-full flex-1 border border-stone-200 rounded-xl p-3 text-xs font-mono bg-stone-50 leading-relaxed custom-scrollbar focus:outline-none mb-3 min-h-[220px]"></textarea>
-
+        <textarea readonly :value="generatedSummaryText" class="w-full flex-1 border rounded-xl p-3 text-xs font-mono bg-stone-50 leading-relaxed mb-3 min-h-[220px]"></textarea>
         <div class="flex gap-2">
-          <button 
-            @click="copySummaryText" 
-            class="flex-1 py-2.5 rounded-xl border border-stone-300 text-stone-700 font-bold hover:bg-stone-50 text-xs flex items-center justify-center gap-1.5">
+          <button @click="copySummaryText" class="flex-1 py-2.5 rounded-xl border text-stone-700 font-bold text-xs flex items-center justify-center gap-1.5">
             <i class="ph ph-copy"></i>
             <span>{{ copyButtonText }}</span>
           </button>
-          <button 
-            v-if="isLineClient"
-            @click="sendSummaryToLineChat" 
-            class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md">
+          <button v-if="isLineClient" @click="sendSummaryToLineChat" class="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md">
             <i class="ph ph-paper-plane-tilt"></i>
             <span>發送回 LINE 聊天室</span>
           </button>
@@ -594,42 +959,30 @@
       </div>
     </div>
 
-    <!-- Modal 4: 系統設定 (Firebase & LIFF) -->
-    <div v-if="showSettingsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <!-- Modal 7: 設定 -->
+    <div v-if="showSettingsModal" class="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs">
         <div class="flex justify-between items-center mb-3">
-          <h3 class="text-sm font-bold text-stone-800">⚙️ 系統與雲端連線設定</h3>
-          <button @click="showSettingsModal = false" class="text-stone-400 hover:text-stone-600">
-            <i class="ph ph-x text-lg"></i>
-          </button>
+          <h3 class="text-sm font-bold text-stone-800">⚙️ 系統設定與營地資訊</h3>
+          <button @click="showSettingsModal = false" class="text-stone-400 hover:text-stone-600"><i class="ph ph-x text-lg"></i></button>
         </div>
-
         <div class="space-y-3">
           <div>
             <label class="block font-semibold text-stone-700 mb-1">活動主題名稱</label>
-            <input v-model="eventTitleInput" type="text" class="w-full border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500">
+            <input v-model="eventTitleInput" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
-
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">LINE LIFF ID</label>
-            <input v-model="liffIdInput" type="text" placeholder="例：2011980881-P0EUvNYQ" class="w-full border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 font-mono">
-            <p class="text-[11px] text-stone-400 mt-0.5">於 LINE Developers 後台建立 LIFF 取得，填入後可在 LINE 自動讀取成員資訊。</p>
+            <label class="block font-semibold text-stone-700 mb-1">營地名稱</label>
+            <input v-model="campSiteInfo.name" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
-
           <div>
-            <label class="block font-semibold text-stone-700 mb-1">Firebase 設定 (JSON)</label>
-            <textarea v-model="firebaseConfigInput" rows="5" placeholder='{"apiKey": "...", "projectId": "...", ...}' class="w-full border rounded-lg p-2 font-mono text-[11px] focus:ring-1 focus:ring-emerald-500"></textarea>
-            <p class="text-[11px] text-stone-400 mt-0.5">填入後啟用多人即時同步。若留空則以本機 LocalStorage 運行。</p>
+            <label class="block font-semibold text-stone-700 mb-1">營地地址</label>
+            <input v-model="campSiteInfo.address" type="text" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
-
           <div class="pt-2 flex gap-2">
-            <button @click="clearAllData" class="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs">
-              清空所有物品
-            </button>
+            <button @click="clearAllData" class="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-xs">清空所有物品</button>
             <div class="flex-1"></div>
-            <button @click="saveSettings" class="px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 text-xs">
-              儲存設定
-            </button>
+            <button @click="saveSettings" class="px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold text-xs">儲存設定</button>
           </div>
         </div>
       </div>
@@ -638,9 +991,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_07"></script>
-  <script src="./config.js?v=20261012_07"></script>
+  <script src="./default-items.js?v=20261012_08"></script>
+  <script src="./config.js?v=20261012_08"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_07"></script>
+  <script src="./app.js?v=20261012_08"></script>
 </body>
 </html>
