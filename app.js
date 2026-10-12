@@ -47,7 +47,7 @@ createApp({
         isLocked: false, // 是否出發前鎖定
         members: ["王小明", "李小華"], // 成員白名單
         claimedMembers: {}, // 成員認領綁定 (防重複選取)
-        items: [],
+        items: (window.DEFAULT_CAMPING_ITEMS ? JSON.parse(JSON.stringify(window.DEFAULT_CAMPING_ITEMS)) : []),
         campSiteInfo: {
           name: "新竹尖石之美露營區",
           address: "新竹縣尖石鄉新樂村煤源段8鄰",
