@@ -149,7 +149,18 @@ createApp({
     // 快速勾選庫 (Quick Picker)
     // ----------------------------------------------------
     function openQuickPicker(defaultTab = null) {
-      pickerCategory.value = defaultTab || (currentCategory.value !== 'all' ? currentCategory.value : 'favorites');
+      if (!presetLibrary.value || presetLibrary.value.length === 0) {
+        if (window.PRESET_ITEM_LIBRARY && window.PRESET_ITEM_LIBRARY.length > 0) {
+          presetLibrary.value = window.PRESET_ITEM_LIBRARY;
+        }
+      }
+      if (typeof defaultTab === 'string' && defaultTab) {
+        pickerCategory.value = defaultTab;
+      } else if (currentCategory.value !== 'all') {
+        pickerCategory.value = currentCategory.value;
+      } else {
+        pickerCategory.value = 'favorites';
+      }
       pickerSearch.value = '';
       selectedPickerItems.value = [];
       showQuickPickerModal.value = true;
