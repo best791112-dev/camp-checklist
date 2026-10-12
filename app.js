@@ -1,5 +1,6 @@
 /**
  * 露營出遊攜帶備忘錄 - 核心邏輯
+ * 支援選單快速勾選、經常選擇（常用收藏）與多人即時同步
  */
 
 const { createApp, ref, computed, onMounted } = Vue;
@@ -16,6 +17,15 @@ createApp({
     ];
 
     const itemCategoryOptions = [
+      { id: 'equipment', name: '用品裝備', icon: '⛺' },
+      { id: 'food', name: '食材食品', icon: '🥩' },
+      { id: 'consumables', name: '飲品消耗', icon: '🧊' },
+      { id: 'personal', name: '個人自備', icon: '🎒' }
+    ];
+
+    // 選單庫分類（含 ⭐ 經常選擇）
+    const pickerTabs = [
+      { id: 'favorites', name: '經常選擇', icon: '⭐' },
       { id: 'equipment', name: '用品裝備', icon: '⛺' },
       { id: 'food', name: '食材食品', icon: '🥩' },
       { id: 'consumables', name: '飲品消耗', icon: '🧊' },
@@ -40,7 +50,16 @@ createApp({
     // 清單資料
     const items = ref([]);
 
-    // Modals
+    // 經常選擇 / 常用項目收藏庫 (存放物品名稱陣列)
+    const favorites = ref([]);
+
+    // 快速選單 Modal 狀態
+    const showQuickPickerModal = ref(false);
+    const pickerCategory = ref('favorites');
+    const pickerSearch = ref('');
+    const selectedPickerItems = ref([]);
+
+    // 自訂新增/編輯 Modal
     const showItemModal = ref(false);
     const editingItem = ref(null);
     const formItem = ref({
@@ -50,10 +69,11 @@ createApp({
       note: ''
     });
 
+    // 匯出摘要 Modal
     const showExportModal = ref(false);
     const copyButtonText = ref('複製清單文字');
 
-    // 設定 Modal 相關
+    // 系統設定 Modal
     const showSettingsModal = ref(false);
     const eventTitleInput = ref('');
     const liffIdInput = ref('');
@@ -65,10 +85,14 @@ createApp({
     const FIRESTORE_COLLECTION = 'camping_events';
     const FIRESTORE_DOC_ID = 'active_list';
 
+    // 預設物品庫
+    const presetLibrary = ref(window.PRESET_ITEM_LIBRARY || []);
+
     // ----------------------------------------------------
     // 初始化生命週期
     // ----------------------------------------------------
     onMounted(async () => {
+      loadFavoritesFromStorage();
       loadSettingsFromStorage();
       initUserIdentity();
       await initFirebaseIfConfigured();
@@ -83,6 +107,163 @@ createApp({
         }
       }
     });
+
+    // ----------------------------------------------------
+    // 經常選擇 (常用清單) 邏輯
+    // ----------------------------------------------------
+    function loadFavoritesFromStorage() {
+      const saved = localStorage.getItem('camp_favorites_list');
+      if (saved) {
+        try {
+          favorites.value = JSON.parse(saved);
+        } catch (e) {
+          favorites.value = [];
+        }
+      } else {
+        // 預設常用項目：取自 PRESET_ITEM_LIBRARY 中的 isDefaultFavorite
+        favorites.value = presetLibrary.value
+          .filter(i => i.isDefaultFavorite)
+          .map(i => i.name);
+        saveFavoritesToStorage();
+      }
+    }
+
+    function saveFavoritesToStorage() {
+      localStorage.setItem('camp_favorites_list', JSON.stringify(favorites.value));
+    }
+
+    function isFavorite(itemName) {
+      return favorites.value.includes(itemName);
+    }
+
+    function toggleFavorite(itemName) {
+      if (isFavorite(itemName)) {
+        favorites.value = favorites.value.filter(name => name !== itemName);
+      } else {
+        favorites.value.push(itemName);
+      }
+      saveFavoritesToStorage();
+    }
+
+    // ----------------------------------------------------
+    // 快速勾選庫 (Quick Picker)
+    // ----------------------------------------------------
+    function openQuickPicker(defaultTab = null) {
+      pickerCategory.value = defaultTab || (currentCategory.value !== 'all' ? currentCategory.value : 'favorites');
+      pickerSearch.value = '';
+      selectedPickerItems.value = [];
+      showQuickPickerModal.value = true;
+    }
+
+    function isInCurrentList(itemName) {
+      return items.value.some(i => i.name.toLowerCase() === itemName.toLowerCase());
+    }
+
+    const filteredPickerLibrary = computed(() => {
+      let list = presetLibrary.value;
+
+      // 依頁籤過濾
+      if (pickerCategory.value === 'favorites') {
+        list = list.filter(item => isFavorite(item.name));
+      } else if (pickerCategory.value !== 'all') {
+        list = list.filter(item => item.category === pickerCategory.value);
+      }
+
+      // 搜尋關鍵字
+      if (pickerSearch.value.trim()) {
+        const q = pickerSearch.value.trim().toLowerCase();
+        list = list.filter(item => 
+          item.name.toLowerCase().includes(q) || 
+          (item.note && item.note.toLowerCase().includes(q))
+        );
+      }
+
+      return list;
+    });
+
+    function isPickerItemSelected(item) {
+      return selectedPickerItems.value.some(i => i.name === item.name);
+    }
+
+    function togglePickItem(item) {
+      if (isInCurrentList(item.name)) return; // 已在清單中不可重複選
+
+      const index = selectedPickerItems.value.findIndex(i => i.name === item.name);
+      if (index >= 0) {
+        selectedPickerItems.value.splice(index, 1);
+      } else {
+        selectedPickerItems.value.push(item);
+      }
+    }
+
+    function selectAllAvailableInTab() {
+      const available = filteredPickerLibrary.value.filter(item => !isInCurrentList(item.name));
+      const allSelected = available.every(item => isPickerItemSelected(item));
+
+      if (allSelected) {
+        // 取消全選
+        selectedPickerItems.value = selectedPickerItems.value.filter(
+          item => !available.some(a => a.name === item.name)
+        );
+      } else {
+        // 全選未加入的項目
+        available.forEach(item => {
+          if (!isPickerItemSelected(item)) {
+            selectedPickerItems.value.push(item);
+          }
+        });
+      }
+    }
+
+    function addSelectedToCurrentList() {
+      if (selectedPickerItems.value.length === 0) return;
+
+      const newItems = selectedPickerItems.value.map(preset => ({
+        id: 'item_pick_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name: preset.name,
+        category: preset.category,
+        quantity: preset.quantity || '',
+        note: preset.note || '',
+        assignedTo: null,
+        assignedUserName: null,
+        assignedUserPicture: null
+      }));
+
+      items.value = [...items.value, ...newItems];
+      persistData();
+      const count = newItems.length;
+      showQuickPickerModal.value = false;
+      selectedPickerItems.value = [];
+      alert(`✅ 已成功勾選加入 ${count} 項物品到清單！`);
+    }
+
+    function addAllFavoritesToCurrentList() {
+      const favPresets = presetLibrary.value.filter(item => isFavorite(item.name) && !isInCurrentList(item.name));
+      if (favPresets.length === 0) {
+        alert('所有「經常選擇」的項目都已經在目前清單中囉！');
+        return;
+      }
+
+      if (!confirm(`確定要將 ${favPresets.length} 項「經常選擇」的常用項目一次加入清單嗎？`)) {
+        return;
+      }
+
+      const newItems = favPresets.map(preset => ({
+        id: 'item_fav_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        name: preset.name,
+        category: preset.category,
+        quantity: preset.quantity || '',
+        note: preset.note || '',
+        assignedTo: null,
+        assignedUserName: null,
+        assignedUserPicture: null
+      }));
+
+      items.value = [...items.value, ...newItems];
+      persistData();
+      showQuickPickerModal.value = false;
+      alert(`🎉 已一次加入 ${newItems.length} 項常用備用清單！`);
+    }
 
     // ----------------------------------------------------
     // 使用者身分初始化
@@ -133,9 +314,6 @@ createApp({
           currentUser.value.displayName = profile.displayName || currentUser.value.displayName;
           currentUser.value.pictureUrl = profile.pictureUrl || '';
           saveUserIdentity();
-        } else if (liff.isInClient()) {
-          // 在 LINE 內部環境若未登入可嘗試自動登入
-          // liff.login();
         }
       } catch (err) {
         console.warn('LINE LIFF 初始化提示:', err.message);
@@ -169,7 +347,6 @@ createApp({
         firestoreDb = firebase.firestore();
         syncStatus.value = 'cloud';
 
-        // 即時監聽 Firestore 文件變化 (多人多裝置連線)
         if (docUnsubscribe) docUnsubscribe();
 
         const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC_ID);
@@ -184,7 +361,6 @@ createApp({
               eventTitle.value = data.eventTitle;
             }
           } else {
-            // 首次建立文件
             docRef.set({
               eventTitle: eventTitle.value,
               items: items.value.length ? items.value : window.DEFAULT_CAMPING_ITEMS || [],
@@ -203,7 +379,7 @@ createApp({
     }
 
     // ----------------------------------------------------
-    // 資料持久化 (同步寫入 Cloud 或 LocalStorage)
+    // 資料持久化
     // ----------------------------------------------------
     function persistData() {
       localStorage.setItem('camp_items_cache', JSON.stringify(items.value));
@@ -232,7 +408,7 @@ createApp({
     }
 
     // ----------------------------------------------------
-    // 認領與取消認領邏輯
+    // 認領與取消認領
     // ----------------------------------------------------
     function claimItem(item, forceTakeover = false) {
       if (item.assignedTo && !forceTakeover) return;
@@ -283,13 +459,11 @@ createApp({
       if (!formItem.value.name.trim()) return;
 
       if (editingItem.value) {
-        // 更新現有項目
         editingItem.value.category = formItem.value.category;
         editingItem.value.name = formItem.value.name.trim();
         editingItem.value.quantity = formItem.value.quantity.trim();
         editingItem.value.note = formItem.value.note.trim();
       } else {
-        // 新增項目
         const newItem = {
           id: 'item_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
           category: formItem.value.category,
@@ -314,23 +488,6 @@ createApp({
       }
     }
 
-    function importDefaultItems() {
-      if (!window.DEFAULT_CAMPING_ITEMS || window.DEFAULT_CAMPING_ITEMS.length === 0) return;
-      if (items.value.length > 0 && !confirm('匯入預設範本將會把常見裝備與食材追加到清單中，確定匯入嗎？')) {
-        return;
-      }
-
-      // 產生新 ID 避免衝突
-      const newItems = window.DEFAULT_CAMPING_ITEMS.map(it => ({
-        ...it,
-        id: 'item_imp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)
-      }));
-
-      items.value = [...items.value, ...newItems];
-      persistData();
-      alert(`已成功匯入 ${newItems.length} 項常備裝備與食材！`);
-    }
-
     function clearAllData() {
       if (confirm('⚠️ 警告：這將會清空目前所有的攜帶清單，確定要重置嗎？')) {
         items.value = [];
@@ -344,15 +501,12 @@ createApp({
     // ----------------------------------------------------
     const filteredItems = computed(() => {
       return items.value.filter(item => {
-        // 類別過濾
         if (currentCategory.value !== 'all' && item.category !== currentCategory.value) {
           return false;
         }
-        // 只看未認領
         if (filterUnclaimedOnly.value && item.assignedTo) {
           return false;
         }
-        // 關鍵字搜尋
         if (searchQuery.value.trim()) {
           const q = searchQuery.value.trim().toLowerCase();
           const matchName = item.name.toLowerCase().includes(q);
@@ -499,6 +653,7 @@ createApp({
     return {
       categories,
       itemCategoryOptions,
+      pickerTabs,
       eventTitle,
       currentCategory,
       searchQuery,
@@ -523,7 +678,6 @@ createApp({
       openEditModal,
       saveItem,
       deleteItem,
-      importDefaultItems,
       clearAllData,
       showExportModal,
       generatedSummaryText,
@@ -535,7 +689,23 @@ createApp({
       eventTitleInput,
       liffIdInput,
       firebaseConfigInput,
-      saveSettings
+      saveSettings,
+      // 常用與快速勾選
+      favorites,
+      isFavorite,
+      toggleFavorite,
+      showQuickPickerModal,
+      pickerCategory,
+      pickerSearch,
+      selectedPickerItems,
+      openQuickPicker,
+      filteredPickerLibrary,
+      isInCurrentList,
+      isPickerItemSelected,
+      togglePickItem,
+      selectAllAvailableInTab,
+      addSelectedToCurrentList,
+      addAllFavoritesToCurrentList
     };
   }
 }).mount('#app');
