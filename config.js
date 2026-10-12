@@ -13,10 +13,11 @@ window.APP_CONFIG = {
   // 預設活動名稱
   DEFAULT_EVENT_TITLE: "🌲 歡樂露營出遊裝備與食材備忘錄",
 
-  // Firebase Firestore 設定 (啟用多人跨裝置即時同步)
+  // Firebase Firestore / Realtime Database 設定
   FIREBASE_CONFIG: {
     apiKey: "AIzaSyB9oe8wfbeYEwBdaU8eG9zuF4XcmXweMxQ",
     authDomain: "my-camp-list.firebaseapp.com",
+    databaseURL: "https://my-camp-list-default-rtdb.firebaseio.com",
     projectId: "my-camp-list",
     storageBucket: "my-camp-list.firebasestorage.app",
     messagingSenderId: "742920230350",
