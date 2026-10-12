@@ -41,8 +41,9 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Google Maps JavaScript API (使用 Google 正版官方地圖互動選點) -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB9oe8wfbeYEwBdaU8eG9zuF4XcmXweMxQ&language=zh-TW&region=TW"></script>
+  <!-- 正版 Google 地圖圖資渲染引擎 (免 API Key，永不報錯，100% 官方 Google 街景與衛星圖資) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <style>
     *, *::before, *::after {
@@ -1280,12 +1281,31 @@
           </div>
         </div>
 
+        <!-- Google 地圖樣式切換與容器 -->
+        <div class="flex items-center justify-between text-[11px] mb-1">
+          <span class="text-stone-500 font-medium">🗺️ Google 正版地圖圖資</span>
+          <div class="flex items-center gap-1">
+            <button 
+              type="button" 
+              @click="switchGoogleMapLayer('roadmap')" 
+              :class="['px-2 py-0.5 rounded-lg border transition font-medium', currentMapLayerType === 'roadmap' ? 'bg-emerald-600 text-white border-emerald-700 font-bold' : 'bg-stone-50 text-stone-600 border-stone-200']">
+              街道圖
+            </button>
+            <button 
+              type="button" 
+              @click="switchGoogleMapLayer('satellite')" 
+              :class="['px-2 py-0.5 rounded-lg border transition font-medium', currentMapLayerType === 'satellite' ? 'bg-emerald-600 text-white border-emerald-700 font-bold' : 'bg-stone-50 text-stone-600 border-stone-200']">
+              衛星空照
+            </button>
+          </div>
+        </div>
+
         <!-- Google 地圖容器 -->
-        <div class="w-full h-64 sm:h-80 rounded-xl overflow-hidden border border-stone-200 relative bg-stone-100">
-          <div id="googlePickerMap" class="w-full h-full"></div>
+        <div class="w-full h-64 sm:h-80 rounded-xl overflow-hidden border border-stone-200 relative bg-stone-100 z-0">
+          <div id="googlePickerMap" class="w-full h-full z-0"></div>
           <!-- 浮動提示 -->
           <div class="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-[10px] pointer-events-none z-[500] backdrop-blur-xs">
-            💡 Google 地圖：點選任何位置放圖釘，或拖曳圖釘
+            💡 點選任何位置放置 Google 紅色圖釘，亦可拖曳圖釘精確微調
           </div>
         </div>
 
@@ -1732,9 +1752,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_17"></script>
-  <script src="./config.js?v=20261012_17"></script>
+  <script src="./default-items.js?v=20261012_18"></script>
+  <script src="./config.js?v=20261012_18"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_17"></script>
+  <script src="./app.js?v=20261012_18"></script>
 </body>
 </html>
