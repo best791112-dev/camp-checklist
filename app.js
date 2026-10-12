@@ -1,9 +1,8 @@
 /**
- * 露營出遊協同備忘錄 - 核心邏輯 (進階旗艦版)
- * 包含：多人共同認領、指定負責人、上車點檢、多天數行程推算、Google Maps 導航、公費記帳與即時同步
+ * 露營出遊神隊友 - 核心邏輯 (多活動切換 + 密碼成員保護 + 旗艦完整版)
  */
 
-const { createApp, ref, computed, onMounted } = Vue;
+const { createApp, ref, computed, onMounted, watch } = Vue;
 
 createApp({
   setup() {
@@ -35,24 +34,114 @@ createApp({
       { id: 'personal', name: '個人自備', icon: '🎒' }
     ];
 
-    // 活動基本資料
-    const eventTitle = ref(window.APP_CONFIG?.DEFAULT_EVENT_TITLE || "🌲 歡樂露營出遊備忘錄");
+    // ----------------------------------------------------
+    // 多活動管理 (Multi-trip Management)
+    // ----------------------------------------------------
+    const allTrips = ref([
+      {
+        id: "trip_202610_default",
+        title: "🌲 2026年10月 新竹尖石露營",
+        date: "2026-10-24",
+        passcode: "", // 選填通關密碼
+        isLocked: false, // 是否出發前鎖定
+        members: ["王小明", "李小華"], // 成員白名單
+        items: [],
+        campSiteInfo: {
+          name: "新竹尖石之美露營區",
+          address: "新竹縣尖石鄉新樂村煤源段8鄰",
+          mapUrl: "https://maps.google.com/?q=新竹尖石之美露營區",
+          checkInTime: "13:00",
+          checkOutTime: "11:00",
+          note: "附吹風機、冷藏冷凍冰箱、草皮碎石營位"
+        },
+        tripDays: [
+          {
+            dayNumber: 1,
+            title: "Day 1 - 採買與營地紮營",
+            date: "2026-10-24",
+            stops: [
+              { id: "stop_1_1", name: "集合出發點 (台北交流道)", depTime: "08:30", travelMin: 60, stayMin: 15, note: "集合完畢準時出發", mapQuery: "台北交流道" },
+              { id: "stop_1_2", name: "好市多採買食材 (新竹店)", depTime: "", travelMin: 50, stayMin: 90, note: "採買牛肉、海鮮與冰塊酒水", mapQuery: "好市多 新竹店" },
+              { id: "stop_1_3", name: "抵達營地 (尖石之美露營區)", depTime: "", travelMin: 0, stayMin: 0, note: "搭帳篷、下午茶時光", mapQuery: "尖石之美露營區" }
+            ]
+          },
+          {
+            dayNumber: 2,
+            title: "Day 2 - 拔營與內灣老街",
+            date: "2026-10-25",
+            stops: [
+              { id: "stop_2_1", name: "營地早晨與撤帳拔營", depTime: "11:00", travelMin: 30, stayMin: 0, note: "11:00前退場", mapQuery: "尖石之美露營區" },
+              { id: "stop_2_2", name: "內灣老街小吃午餐", depTime: "", travelMin: 70, stayMin: 120, note: "吃野薑花粽買伴手禮", mapQuery: "內灣老街" }
+            ]
+          }
+        ],
+        expenseList: [
+          { id: "exp_1", title: "營位訂金 (2帳)", amount: 2400, paidBy: "王小明", category: "營位住宿", date: "2026-10-24" }
+        ],
+        splitPeopleCount: 4
+      }
+    ]);
+
+    const currentTripId = ref("trip_202610_default");
+    const showTripSwitchModal = ref(false);
+    const showNewTripModal = ref(false);
+    const formNewTrip = ref({
+      title: "",
+      date: "",
+      passcode: "",
+      importPresets: true
+    });
+
+    // 當前選中的活動物件 (雙向綁定)
+    const currentTrip = computed(() => {
+      let t = allTrips.value.find(x => x.id === currentTripId.value);
+      if (!t && allTrips.value.length > 0) {
+        currentTripId.value = allTrips.value[0].id;
+        t = allTrips.value[0];
+      }
+      return t || allTrips.value[0];
+    });
+
+    // 常用捷徑參考當前活動
+    const items = computed({
+      get: () => currentTrip.value ? currentTrip.value.items : [],
+      set: (val) => { if (currentTrip.value) currentTrip.value.items = val; }
+    });
+
+    const campSiteInfo = computed({
+      get: () => currentTrip.value?.campSiteInfo || {},
+      set: (val) => { if (currentTrip.value) currentTrip.value.campSiteInfo = val; }
+    });
+
+    const tripDays = computed({
+      get: () => currentTrip.value?.tripDays || [],
+      set: (val) => { if (currentTrip.value) currentTrip.value.tripDays = val; }
+    });
+
+    const expenseList = computed({
+      get: () => currentTrip.value?.expenseList || [],
+      set: (val) => { if (currentTrip.value) currentTrip.value.expenseList = val; }
+    });
+
+    const splitPeopleCount = computed({
+      get: () => currentTrip.value?.splitPeopleCount || 4,
+      set: (val) => { if (currentTrip.value) currentTrip.value.splitPeopleCount = Number(val) || 4; }
+    });
+
+    // 狀態變數
     const currentCategory = ref('all');
     const searchQuery = ref('');
     const filterUnclaimedOnly = ref(false);
     const filterMyItemsOnly = ref(false);
-    const syncStatus = ref('local'); // 'local' | 'cloud'
+    const syncStatus = ref('local');
     const isLineClient = ref(false);
 
-    // 當前使用者身分
+    // 當前使用者
     const currentUser = ref({
       userId: 'user_' + Math.floor(Math.random() * 10000),
       displayName: '露營夥伴',
       pictureUrl: ''
     });
-
-    // 清單資料
-    const items = ref([]);
 
     // 經常選擇收藏庫
     const favorites = ref([]);
@@ -78,95 +167,7 @@ createApp({
     const assigningItem = ref(null);
     const assignTargetName = ref('');
 
-    // 上車點檢狀態 (以 item.id 為 key，boolean 為 value)
-    const carLoadedMap = ref({});
-
-    // ----------------------------------------------------
-    // 行程規劃與營地資料
-    // ----------------------------------------------------
-    const campSiteInfo = ref({
-      name: "新竹尖石之美露營區",
-      address: "新竹縣尖石鄉新樂村煤源段8鄰",
-      mapUrl: "https://maps.google.com/?q=新竹尖石之美露營區",
-      checkInTime: "13:00",
-      checkOutTime: "11:00",
-      contact: "0912-345-678",
-      note: "附吹風機、冷藏冷凍冰箱、草皮碎石營位"
-    });
-
-    // 多天數行程表
-    const tripDays = ref([
-      {
-        dayNumber: 1,
-        title: "Day 1 - 採買與營地紮營",
-        date: "2026-10-24",
-        stops: [
-          {
-            id: "stop_1_1",
-            name: "集合出發點 (台北交流道)",
-            depTime: "08:30",
-            travelMin: 60,
-            stayMin: 15,
-            note: "點名集合、對講機測試",
-            mapQuery: "台北交流道"
-          },
-          {
-            id: "stop_1_2",
-            name: "好市多採買食材 (新竹店)",
-            depTime: "",
-            travelMin: 50,
-            stayMin: 90,
-            note: "採買牛肉、海鮮、酒水與生鮮",
-            mapQuery: "好市多 新竹店"
-          },
-          {
-            id: "stop_1_3",
-            name: "抵達營地 (尖石之美露營區)",
-            depTime: "",
-            travelMin: 0,
-            stayMin: 0,
-            note: "搭帳篷、開始下午茶時光",
-            mapQuery: "尖石之美露營區"
-          }
-        ]
-      },
-      {
-        dayNumber: 2,
-        title: "Day 2 - 營地收帳與周邊景點",
-        date: "2026-10-25",
-        stops: [
-          {
-            id: "stop_2_1",
-            name: "營地早晨與拔營撤帳",
-            depTime: "11:00",
-            travelMin: 30,
-            stayMin: 0,
-            note: "收拾裝備，11:00前退場",
-            mapQuery: "尖石之美露營區"
-          },
-          {
-            id: "stop_2_2",
-            name: "內灣老街 (在地午餐小吃)",
-            depTime: "",
-            travelMin: 70,
-            stayMin: 120,
-            note: "吃野薑花粽、客家擂茶、買伴手禮",
-            mapQuery: "內灣老街"
-          },
-          {
-            id: "stop_2_3",
-            name: "快樂賦歸 (各自返家)",
-            depTime: "",
-            travelMin: 0,
-            stayMin: 0,
-            note: "平安順利抵達溫暖的家",
-            mapQuery: ""
-          }
-        ]
-      }
-    ]);
-
-    // 新增/編輯行程點 Modal
+    // 行程點 Modal
     const showStopModal = ref(false);
     const currentDayIndex = ref(0);
     const editingStopIndex = ref(-1);
@@ -179,29 +180,7 @@ createApp({
       mapQuery: ""
     });
 
-    // ----------------------------------------------------
-    // 公費分攤與記帳資料
-    // ----------------------------------------------------
-    const expenseList = ref([
-      {
-        id: "exp_1",
-        title: "露營區營位費 (草皮區 2 帳)",
-        amount: 2400,
-        paidBy: "王小明",
-        category: "營位住宿",
-        date: "2026-10-24"
-      },
-      {
-        id: "exp_2",
-        title: "好市多食材與烤肉用品",
-        amount: 4800,
-        paidBy: "李小華",
-        category: "食材採買",
-        date: "2026-10-24"
-      }
-    ]);
-
-    const splitPeopleCount = ref(4); // 分攤人數
+    // 記帳 Modal
     const showExpenseModal = ref(false);
     const formExpense = ref({
       title: "",
@@ -210,25 +189,25 @@ createApp({
       category: "食材採買"
     });
 
-    // 匯出摘要 Modal
+    // 系統設定 Modal
+    const showSettingsModal = ref(false);
+    const newMemberInput = ref('');
+
+    // 上車點檢狀態
+    const carLoadedMap = ref({});
+
+    // 匯出摘要
     const showExportModal = ref(false);
     const copyButtonText = ref('複製清單文字');
 
-    // 系統設定 Modal
-    const showSettingsModal = ref(false);
-    const eventTitleInput = ref('');
-    const liffIdInput = ref('');
-    const firebaseConfigInput = ref('');
-
     // Firebase 參考
-    let firestoreDb = null;
-    let docUnsubscribe = null;
     let realtimeDb = null;
     let rtdbRef = null;
+    let firestoreDb = null;
+    let docUnsubscribe = null;
     const FIRESTORE_COLLECTION = 'camping_events';
-    const FIRESTORE_DOC_ID = 'active_list';
+    const FIRESTORE_DOC_ID = 'trips_root';
 
-    // 預設物品庫
     const presetLibrary = ref(window.PRESET_ITEM_LIBRARY || []);
 
     // ----------------------------------------------------
@@ -237,24 +216,125 @@ createApp({
     onMounted(async () => {
       loadFavoritesFromStorage();
       loadCarCheckFromStorage();
-      loadSettingsFromStorage();
+      loadTripsFromLocal();
       initUserIdentity();
       await initFirebaseIfConfigured();
       await initLiffIfConfigured();
 
-      if (items.value.length === 0) {
-        loadItemsFromLocal();
-        if (items.value.length === 0 && window.DEFAULT_CAMPING_ITEMS) {
-          items.value = JSON.parse(JSON.stringify(window.DEFAULT_CAMPING_ITEMS));
+      // 若目前活動 items 為空，預設匯入範本
+      if (currentTrip.value && currentTrip.value.items.length === 0) {
+        if (window.DEFAULT_CAMPING_ITEMS) {
+          currentTrip.value.items = JSON.parse(JSON.stringify(window.DEFAULT_CAMPING_ITEMS));
           persistData();
         }
       }
     });
 
     // ----------------------------------------------------
+    // 多活動管理操作
+    // ----------------------------------------------------
+    function switchTrip(tripId) {
+      currentTripId.value = tripId;
+      localStorage.setItem('camp_current_trip_id', tripId);
+      showTripSwitchModal.value = false;
+    }
+
+    function createNewTrip() {
+      if (!formNewTrip.value.title.trim()) return;
+
+      const newId = 'trip_' + Date.now();
+      let initItems = [];
+      if (formNewTrip.value.importPresets && window.DEFAULT_CAMPING_ITEMS) {
+        initItems = JSON.parse(JSON.stringify(window.DEFAULT_CAMPING_ITEMS));
+      }
+
+      const newTrip = {
+        id: newId,
+        title: formNewTrip.value.title.trim(),
+        date: formNewTrip.value.date || "",
+        passcode: formNewTrip.value.passcode.trim(),
+        isLocked: false,
+        members: [currentUser.value.displayName],
+        items: initItems,
+        campSiteInfo: {
+          name: "待定營地 / 飯店",
+          address: "",
+          mapUrl: "",
+          checkInTime: "13:00",
+          checkOutTime: "11:00",
+          note: ""
+        },
+        tripDays: [
+          {
+            dayNumber: 1,
+            title: "Day 1 - 出發行程",
+            date: formNewTrip.value.date || "",
+            stops: [
+              { id: "stop_1_1", name: "集合出發", depTime: "08:30", travelMin: 60, stayMin: 0, note: "準時集合出發", mapQuery: "" }
+            ]
+          }
+        ],
+        expenseList: [],
+        splitPeopleCount: 4
+      };
+
+      allTrips.value.push(newTrip);
+      currentTripId.value = newId;
+      persistData();
+
+      showNewTripModal.value = false;
+      showTripSwitchModal.value = false;
+      formNewTrip.value = { title: "", date: "", passcode: "", importPresets: true };
+      alert(`🎉 活動「${newTrip.title}」建立成功！`);
+    }
+
+    function deleteCurrentTrip(tripId) {
+      if (allTrips.value.length <= 1) {
+        alert('至少需保留一個活動！');
+        return;
+      }
+      const t = allTrips.value.find(x => x.id === tripId);
+      if (confirm(`確定要刪除「${t?.title || '此活動'}」嗎？所有相關資料將會移除。`)) {
+        allTrips.value = allTrips.value.filter(x => x.id !== tripId);
+        currentTripId.value = allTrips.value[0].id;
+        persistData();
+      }
+    }
+
+    // ----------------------------------------------------
+    // 人員成員管理與防大亂
+    // ----------------------------------------------------
+    function addMember() {
+      if (!newMemberInput.value.trim() || !currentTrip.value) return;
+      const name = newMemberInput.value.trim();
+      if (!currentTrip.value.members) currentTrip.value.members = [];
+      if (!currentTrip.value.members.includes(name)) {
+        currentTrip.value.members.push(name);
+        persistData();
+      }
+      newMemberInput.value = '';
+    }
+
+    function removeMember(name) {
+      if (!currentTrip.value || !currentTrip.value.members) return;
+      currentTrip.value.members = currentTrip.value.members.filter(m => m !== name);
+      persistData();
+    }
+
+    function toggleLockTrip() {
+      if (!currentTrip.value) return;
+      currentTrip.value.isLocked = !currentTrip.value.isLocked;
+      persistData();
+      if (currentTrip.value.isLocked) {
+        alert('🔒 清單已鎖定！出發前防止項目被誤刪或誤改。');
+      } else {
+        alert('🔓 清單已解鎖，現在可自由編輯。');
+      }
+    }
+
+    // ----------------------------------------------------
     // 多人共同認領機制 (assignedUsers)
     // ----------------------------------------------------
-    // 確保每筆 item 具有正規化的 assignedUsers 陣列 (向下相容舊資料)
     function normalizeItemUsers(item) {
       if (!item.assignedUsers || !Array.isArray(item.assignedUsers)) {
         item.assignedUsers = [];
@@ -269,14 +349,16 @@ createApp({
       return item.assignedUsers;
     }
 
-    // 判斷是否由我認領
     function isClaimedByMe(item) {
       const users = normalizeItemUsers(item);
       return users.some(u => u.userId === currentUser.value.userId);
     }
 
-    // 我來帶 / 我也帶 (共同認領)
     function claimItem(item) {
+      if (currentTrip.value?.isLocked) {
+        alert('⚠️ 目前活動清單已被主揪鎖定，無法更改認領！');
+        return;
+      }
       const users = normalizeItemUsers(item);
       if (users.some(u => u.userId === currentUser.value.userId)) return;
 
@@ -286,16 +368,21 @@ createApp({
         pictureUrl: currentUser.value.pictureUrl || null
       });
 
-      // 保持相容性
+      // 自動將使用者加入成員名單
+      if (currentTrip.value?.members && !currentTrip.value.members.includes(currentUser.value.displayName)) {
+        currentTrip.value.members.push(currentUser.value.displayName);
+      }
+
       item.assignedTo = users[0]?.userId || null;
       item.assignedUserName = users[0]?.displayName || null;
-      item.assignedUserPicture = users[0]?.pictureUrl || null;
-
       persistData();
     }
 
-    // 取消認領 (可取消自己，或指定取消某人)
     function unclaimItem(item, targetUserId = null) {
+      if (currentTrip.value?.isLocked) {
+        alert('⚠️ 目前活動清單已被主揪鎖定，無法取消認領！');
+        return;
+      }
       const uidToCancel = targetUserId || currentUser.value.userId;
       let users = normalizeItemUsers(item);
       users = users.filter(u => u.userId !== uidToCancel);
@@ -303,16 +390,17 @@ createApp({
 
       item.assignedTo = users[0]?.userId || null;
       item.assignedUserName = users[0]?.displayName || null;
-      item.assignedUserPicture = users[0]?.pictureUrl || null;
-
       persistData();
     }
 
-    // 指定誰帶 Modal 操作
     function openAssignModal(item) {
       assigningItem.value = item;
       assignTargetName.value = '';
       showAssignModal.value = true;
+    }
+
+    function selectQuickMember(name) {
+      assignTargetName.value = name;
     }
 
     function confirmAssignToUser() {
@@ -320,15 +408,19 @@ createApp({
       const targetName = assignTargetName.value.trim();
       const users = normalizeItemUsers(assigningItem.value);
 
-      // 避免重複加入同名
       if (!users.some(u => u.displayName === targetName)) {
         users.push({
-          userId: 'user_assigned_' + Date.now(),
+          userId: 'user_' + Date.now(),
           displayName: targetName,
           pictureUrl: null
         });
         assigningItem.value.assignedTo = users[0].userId;
         assigningItem.value.assignedUserName = users[0].displayName;
+
+        // 加到成員名單
+        if (currentTrip.value?.members && !currentTrip.value.members.includes(targetName)) {
+          currentTrip.value.members.push(targetName);
+        }
         persistData();
       }
 
@@ -342,9 +434,7 @@ createApp({
     function loadCarCheckFromStorage() {
       const saved = localStorage.getItem('camp_car_loaded_' + currentUser.value.userId);
       if (saved) {
-        try {
-          carLoadedMap.value = JSON.parse(saved);
-        } catch (e) {}
+        try { carLoadedMap.value = JSON.parse(saved); } catch (e) {}
       }
     }
 
@@ -361,9 +451,9 @@ createApp({
       return !!carLoadedMap.value[itemId];
     }
 
-    // 個人專屬上車檢查清單：包含「我負責帶的物品」與「個人自備物品」
     const myCarCheckItems = computed(() => {
-      return items.value.filter(item => {
+      const list = items.value || [];
+      return list.filter(item => {
         return isClaimedByMe(item) || item.category === 'personal';
       });
     });
@@ -372,17 +462,12 @@ createApp({
       const list = myCarCheckItems.value;
       const loaded = list.filter(i => isCarLoaded(i.id)).length;
       const percent = list.length > 0 ? Math.round((loaded / list.length) * 100) : 0;
-      return {
-        total: list.length,
-        loaded,
-        percent
-      };
+      return { total: list.length, loaded, percent };
     });
 
     // ----------------------------------------------------
     // 行程時間自動推算演算法
     // ----------------------------------------------------
-    // 時間加減工具 (HH:mm + 分鐘 = HH:mm)
     function addMinutesToTime(timeStr, minutesToAdd) {
       if (!timeStr || !timeStr.includes(':')) return '';
       const [h, m] = timeStr.split(':').map(Number);
@@ -392,7 +477,6 @@ createApp({
       return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
     }
 
-    // 計算特定一天的各站到達與出發時間
     function getCalculatedStops(dayStops) {
       if (!dayStops || dayStops.length === 0) return [];
       const result = [];
@@ -421,7 +505,6 @@ createApp({
       return result;
     }
 
-    // 開啟 Google Maps 導航
     function openMapNavigation(queryOrUrl) {
       if (!queryOrUrl) return;
       if (queryOrUrl.startsWith('http')) {
@@ -432,31 +515,24 @@ createApp({
       }
     }
 
-    // 行程管理操作
     function addTripDay() {
-      const nextDayNum = tripDays.value.length + 1;
-      tripDays.value.push({
+      if (!currentTrip.value) return;
+      const nextDayNum = currentTrip.value.tripDays.length + 1;
+      currentTrip.value.tripDays.push({
         dayNumber: nextDayNum,
         title: `Day ${nextDayNum} - 精彩行程`,
         date: "",
         stops: [
-          {
-            id: `stop_${nextDayNum}_1`,
-            name: "晨間出發",
-            depTime: "09:00",
-            travelMin: 30,
-            stayMin: 0,
-            note: "準備出發",
-            mapQuery: ""
-          }
+          { id: `stop_${nextDayNum}_1`, name: "出發", depTime: "09:00", travelMin: 30, stayMin: 0, note: "", mapQuery: "" }
         ]
       });
       persistData();
     }
 
     function removeTripDay(dayIndex) {
-      if (confirm(`確定要刪除第 ${dayIndex + 1} 天的行程嗎？`)) {
-        tripDays.value.splice(dayIndex, 1);
+      if (!currentTrip.value || currentTrip.value.tripDays.length <= 1) return;
+      if (confirm(`確定刪除第 ${dayIndex + 1} 天行程？`)) {
+        currentTrip.value.tripDays.splice(dayIndex, 1);
         persistData();
       }
     }
@@ -464,43 +540,34 @@ createApp({
     function openAddStopModal(dayIndex) {
       currentDayIndex.value = dayIndex;
       editingStopIndex.value = -1;
-      formStop.value = {
-        name: "",
-        depTime: "",
-        travelMin: 30,
-        stayMin: 60,
-        note: "",
-        mapQuery: ""
-      };
+      formStop.value = { name: "", depTime: "", travelMin: 30, stayMin: 60, note: "", mapQuery: "" };
       showStopModal.value = true;
     }
 
     function openEditStopModal(dayIndex, stopIndex) {
       currentDayIndex.value = dayIndex;
       editingStopIndex.value = stopIndex;
-      const target = tripDays.value[dayIndex].stops[stopIndex];
+      const target = currentTrip.value.tripDays[dayIndex].stops[stopIndex];
       formStop.value = { ...target };
       showStopModal.value = true;
     }
 
     function saveStop() {
-      if (!formStop.value.name.trim()) return;
-      const day = tripDays.value[currentDayIndex.value];
+      if (!formStop.value.name.trim() || !currentTrip.value) return;
+      const day = currentTrip.value.tripDays[currentDayIndex.value];
       if (editingStopIndex.value >= 0) {
         day.stops[editingStopIndex.value] = { ...formStop.value };
       } else {
-        day.stops.push({
-          id: 'stop_' + Date.now(),
-          ...formStop.value
-        });
+        day.stops.push({ id: 'stop_' + Date.now(), ...formStop.value });
       }
       persistData();
       showStopModal.value = false;
     }
 
     function deleteStop(dayIndex, stopIndex) {
+      if (!currentTrip.value) return;
       if (confirm('確定刪除此行程地點？')) {
-        tripDays.value[dayIndex].stops.splice(stopIndex, 1);
+        currentTrip.value.tripDays[dayIndex].stops.splice(stopIndex, 1);
         persistData();
       }
     }
@@ -509,7 +576,8 @@ createApp({
     // 公費記帳邏輯
     // ----------------------------------------------------
     const totalExpense = computed(() => {
-      return expenseList.value.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      const list = expenseList.value || [];
+      return list.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
     });
 
     const perPersonExpense = computed(() => {
@@ -528,8 +596,8 @@ createApp({
     }
 
     function saveExpense() {
-      if (!formExpense.value.title.trim() || !formExpense.value.amount) return;
-      expenseList.value.push({
+      if (!formExpense.value.title.trim() || !formExpense.value.amount || !currentTrip.value) return;
+      currentTrip.value.expenseList.push({
         id: 'exp_' + Date.now(),
         title: formExpense.value.title.trim(),
         amount: Number(formExpense.value.amount),
@@ -542,8 +610,9 @@ createApp({
     }
 
     function deleteExpense(expId) {
+      if (!currentTrip.value) return;
       if (confirm('確定刪除此筆記帳？')) {
-        expenseList.value = expenseList.value.filter(e => e.id !== expId);
+        currentTrip.value.expenseList = currentTrip.value.expenseList.filter(e => e.id !== expId);
         persistData();
       }
     }
@@ -554,15 +623,9 @@ createApp({
     function loadFavoritesFromStorage() {
       const saved = localStorage.getItem('camp_favorites_list');
       if (saved) {
-        try {
-          favorites.value = JSON.parse(saved);
-        } catch (e) {
-          favorites.value = [];
-        }
+        try { favorites.value = JSON.parse(saved); } catch (e) { favorites.value = []; }
       } else {
-        favorites.value = presetLibrary.value
-          .filter(i => i.isDefaultFavorite)
-          .map(i => i.name);
+        favorites.value = presetLibrary.value.filter(i => i.isDefaultFavorite).map(i => i.name);
         saveFavoritesToStorage();
       }
     }
@@ -600,7 +663,8 @@ createApp({
     }
 
     function isInCurrentList(itemName) {
-      return items.value.some(i => i.name.toLowerCase() === itemName.toLowerCase());
+      const list = items.value || [];
+      return list.some(i => i.name.toLowerCase() === itemName.toLowerCase());
     }
 
     const filteredPickerLibrary = computed(() => {
@@ -613,10 +677,7 @@ createApp({
 
       if (pickerSearch.value.trim()) {
         const q = pickerSearch.value.trim().toLowerCase();
-        list = list.filter(item => 
-          item.name.toLowerCase().includes(q) || 
-          (item.note && item.note.toLowerCase().includes(q))
-        );
+        list = list.filter(item => item.name.toLowerCase().includes(q) || (item.note && item.note.toLowerCase().includes(q)));
       }
       return list;
     });
@@ -664,14 +725,10 @@ createApp({
       const allSelected = available.every(item => isPickerItemSelected(item));
 
       if (allSelected) {
-        selectedPickerItems.value = selectedPickerItems.value.filter(
-          item => !available.some(a => a.name === item.name)
-        );
+        selectedPickerItems.value = selectedPickerItems.value.filter(item => !available.some(a => a.name === item.name));
       } else {
         available.forEach(item => {
-          if (!isPickerItemSelected(item)) {
-            selectedPickerItems.value.push(item);
-          }
+          if (!isPickerItemSelected(item)) selectedPickerItems.value.push(item);
         });
       }
     }
@@ -687,7 +744,7 @@ createApp({
     }
 
     function addSelectedToCurrentList() {
-      if (selectedPickerItems.value.length === 0) return;
+      if (selectedPickerItems.value.length === 0 || !currentTrip.value) return;
 
       const newItems = selectedPickerItems.value.map(preset => ({
         id: 'item_pick_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -699,24 +756,23 @@ createApp({
         assignedUsers: []
       }));
 
-      items.value = [...items.value, ...newItems];
+      currentTrip.value.items = [...currentTrip.value.items, ...newItems];
       persistData();
       const count = newItems.length;
       showQuickPickerModal.value = false;
       selectedPickerItems.value = [];
-      alert(`✅ 已成功勾選加入 ${count} 項物品到清單！`);
+      alert(`✅ 已成功加入 ${count} 項物品！`);
     }
 
     function addAllFavoritesToCurrentList() {
+      if (!currentTrip.value) return;
       const favPresets = presetLibrary.value.filter(item => isFavorite(item.name) && !isInCurrentList(item.name));
       if (favPresets.length === 0) {
-        alert('所有「經常選擇」的項目都已經在目前清單中囉！');
+        alert('常用項目已都在目前活動清單中！');
         return;
       }
 
-      if (!confirm(`確定要將 ${favPresets.length} 項「經常選擇」項目一次加入清單嗎？`)) {
-        return;
-      }
+      if (!confirm(`確定要將 ${favPresets.length} 項常用項目加入「${currentTrip.value.title}」？`)) return;
 
       const newItems = favPresets.map(preset => ({
         id: 'item_fav_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -728,10 +784,10 @@ createApp({
         assignedUsers: []
       }));
 
-      items.value = [...items.value, ...newItems];
+      currentTrip.value.items = [...currentTrip.value.items, ...newItems];
       persistData();
       showQuickPickerModal.value = false;
-      alert(`🎉 已一次加入 ${newItems.length} 項常用備用清單！`);
+      alert(`🎉 已一次加入 ${newItems.length} 項常用裝備食材！`);
     }
 
     // ----------------------------------------------------
@@ -740,9 +796,7 @@ createApp({
     function initUserIdentity() {
       const savedUser = localStorage.getItem('camp_user_profile');
       if (savedUser) {
-        try {
-          currentUser.value = JSON.parse(savedUser);
-        } catch (e) {}
+        try { currentUser.value = JSON.parse(savedUser); } catch (e) {}
       } else {
         const randomId = 'user_' + Math.floor(Math.random() * 8999 + 1000);
         currentUser.value = {
@@ -770,7 +824,7 @@ createApp({
     // LINE LIFF 初始化
     // ----------------------------------------------------
     async function initLiffIfConfigured() {
-      const liffId = liffIdInput.value || window.APP_CONFIG?.LIFF_ID;
+      const liffId = window.APP_CONFIG?.LIFF_ID;
       if (!liffId || typeof liff === 'undefined') return;
 
       try {
@@ -790,20 +844,10 @@ createApp({
     }
 
     // ----------------------------------------------------
-    // Firebase 初始化與全功能即時同步
+    // Firebase 初始化與全功能即時同步 (含多活動同步)
     // ----------------------------------------------------
     async function initFirebaseIfConfigured() {
-      let cfg = null;
-      try {
-        if (firebaseConfigInput.value) {
-          cfg = JSON.parse(firebaseConfigInput.value);
-        } else if (window.APP_CONFIG?.FIREBASE_CONFIG?.apiKey) {
-          cfg = window.APP_CONFIG.FIREBASE_CONFIG;
-        }
-      } catch (e) {
-        console.warn('Firebase 設定解析失敗:', e);
-      }
-
+      const cfg = window.APP_CONFIG?.FIREBASE_CONFIG;
       if (!cfg || !cfg.apiKey || typeof firebase === 'undefined') {
         syncStatus.value = 'local';
         return;
@@ -814,30 +858,26 @@ createApp({
           firebase.initializeApp(cfg);
         }
 
-        // 1. 優先嘗試 Realtime Database
+        // 優先嘗試 Realtime Database
         if (typeof firebase.database === 'function') {
           try {
             realtimeDb = firebase.database();
-            rtdbRef = realtimeDb.ref('camping_event');
+            rtdbRef = realtimeDb.ref('camping_trips_data');
             rtdbRef.on('value', (snapshot) => {
               const data = snapshot.val();
-              if (data) {
+              if (data && data.allTrips && Array.isArray(data.allTrips) && data.allTrips.length > 0) {
                 syncStatus.value = 'cloud';
-                if (data.items && Array.isArray(data.items)) {
-                  items.value = data.items;
-                  localStorage.setItem('camp_items_cache', JSON.stringify(data.items));
+                allTrips.value = data.allTrips;
+                if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
+                  currentTripId.value = data.currentTripId;
                 }
-                if (data.eventTitle) eventTitle.value = data.eventTitle;
-                if (data.campSiteInfo) campSiteInfo.value = data.campSiteInfo;
-                if (data.tripDays && Array.isArray(data.tripDays)) tripDays.value = data.tripDays;
-                if (data.expenseList && Array.isArray(data.expenseList)) expenseList.value = data.expenseList;
-                if (data.splitPeopleCount) splitPeopleCount.value = data.splitPeopleCount;
+                localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
               } else {
                 syncStatus.value = 'cloud';
                 saveAllToFirebase();
               }
             }, (err) => {
-              console.warn('Realtime Database 轉向 Firestore:', err.message);
+              console.warn('Realtime Database 嘗試轉向 Firestore:', err.message);
               initFirestoreFallback();
             });
             return;
@@ -848,7 +888,7 @@ createApp({
 
         initFirestoreFallback();
       } catch (err) {
-        console.warn('Firebase 初始化失敗，使用本機模式:', err);
+        console.warn('Firebase 初始化失敗:', err);
         syncStatus.value = 'local';
       }
     }
@@ -857,7 +897,6 @@ createApp({
       try {
         if (typeof firebase.firestore !== 'function') return;
         firestoreDb = firebase.firestore();
-
         if (docUnsubscribe) docUnsubscribe();
 
         const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC_ID);
@@ -865,15 +904,13 @@ createApp({
           if (doc.exists) {
             syncStatus.value = 'cloud';
             const data = doc.data();
-            if (data.items && Array.isArray(data.items)) {
-              items.value = data.items;
-              localStorage.setItem('camp_items_cache', JSON.stringify(data.items));
+            if (data && data.allTrips && Array.isArray(data.allTrips) && data.allTrips.length > 0) {
+              allTrips.value = data.allTrips;
+              if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
+                currentTripId.value = data.currentTripId;
+              }
+              localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
             }
-            if (data.eventTitle) eventTitle.value = data.eventTitle;
-            if (data.campSiteInfo) campSiteInfo.value = data.campSiteInfo;
-            if (data.tripDays && Array.isArray(data.tripDays)) tripDays.value = data.tripDays;
-            if (data.expenseList && Array.isArray(data.expenseList)) expenseList.value = data.expenseList;
-            if (data.splitPeopleCount) splitPeopleCount.value = data.splitPeopleCount;
           } else {
             syncStatus.value = 'cloud';
             saveAllToFirebase();
@@ -888,12 +925,8 @@ createApp({
 
     function saveAllToFirebase() {
       const payload = {
-        eventTitle: eventTitle.value,
-        items: items.value,
-        campSiteInfo: campSiteInfo.value,
-        tripDays: tripDays.value,
-        expenseList: expenseList.value,
-        splitPeopleCount: splitPeopleCount.value,
+        allTrips: allTrips.value,
+        currentTripId: currentTripId.value,
         updatedAt: Date.now()
       };
 
@@ -910,43 +943,26 @@ createApp({
     // 資料持久化
     // ----------------------------------------------------
     function persistData() {
-      localStorage.setItem('camp_items_cache', JSON.stringify(items.value));
-      localStorage.setItem('camp_event_title', eventTitle.value);
-      localStorage.setItem('camp_site_info', JSON.stringify(campSiteInfo.value));
-      localStorage.setItem('camp_trip_days', JSON.stringify(tripDays.value));
-      localStorage.setItem('camp_expense_list', JSON.stringify(expenseList.value));
-      localStorage.setItem('camp_split_count', splitPeopleCount.value);
+      localStorage.setItem('camp_all_trips_cache', JSON.stringify(allTrips.value));
+      localStorage.setItem('camp_current_trip_id', currentTripId.value);
 
       if (syncStatus.value === 'cloud') {
         saveAllToFirebase();
       }
     }
 
-    function loadItemsFromLocal() {
-      const cached = localStorage.getItem('camp_items_cache');
+    function loadTripsFromLocal() {
+      const cached = localStorage.getItem('camp_all_trips_cache');
       if (cached) {
-        try { items.value = JSON.parse(cached); } catch (e) {}
+        try {
+          const list = JSON.parse(cached);
+          if (Array.isArray(list) && list.length > 0) allTrips.value = list;
+        } catch (e) {}
       }
-      const title = localStorage.getItem('camp_event_title');
-      if (title) eventTitle.value = title;
-
-      const cachedSite = localStorage.getItem('camp_site_info');
-      if (cachedSite) {
-        try { campSiteInfo.value = JSON.parse(cachedSite); } catch (e) {}
+      const curId = localStorage.getItem('camp_current_trip_id');
+      if (curId && allTrips.value.some(x => x.id === curId)) {
+        currentTripId.value = curId;
       }
-
-      const cachedDays = localStorage.getItem('camp_trip_days');
-      if (cachedDays) {
-        try { tripDays.value = JSON.parse(cachedDays); } catch (e) {}
-      }
-
-      const cachedExp = localStorage.getItem('camp_expense_list');
-      if (cachedExp) {
-        try { expenseList.value = JSON.parse(cachedExp); } catch (e) {}
-      }
-
-      const cachedCount = localStorage.getItem('camp_split_count');
-      if (cachedCount) splitPeopleCount.value = Number(cachedCount) || 4;
     }
 
     // ----------------------------------------------------
@@ -975,7 +991,7 @@ createApp({
     }
 
     function saveItem() {
-      if (!formItem.value.name.trim()) return;
+      if (!formItem.value.name.trim() || !currentTrip.value) return;
 
       if (editingItem.value) {
         editingItem.value.category = formItem.value.category;
@@ -991,7 +1007,7 @@ createApp({
           note: formItem.value.note.trim(),
           assignedUsers: []
         };
-        items.value.unshift(newItem);
+        currentTrip.value.items.unshift(newItem);
       }
 
       persistData();
@@ -999,15 +1015,27 @@ createApp({
     }
 
     function deleteItem(itemId) {
+      if (currentTrip.value?.isLocked) {
+        alert('⚠️ 目前活動清單已被主揪鎖定，無法刪除！');
+        return;
+      }
       if (confirm('確定要刪除此攜帶項目嗎？')) {
-        items.value = items.value.filter(i => i.id !== itemId);
+        currentTrip.value.items = currentTrip.value.items.filter(i => i.id !== itemId);
         persistData();
       }
     }
 
+    const eventTitle = computed(() => currentTrip.value?.title || '露營出遊神隊友');
+
+    function saveSettings() {
+      persistData();
+      showSettingsModal.value = false;
+      alert('✅ 設定已儲存並同步至雲端！');
+    }
+
     function clearAllData() {
-      if (confirm('⚠️ 警告：這將會清空目前所有的攜帶清單，確定要重置嗎？')) {
-        items.value = [];
+      if (confirm('⚠️ 警告：這將會清空當前活動的所有物品，確定要重置嗎？')) {
+        if (currentTrip.value) currentTrip.value.items = [];
         persistData();
         showSettingsModal.value = false;
       }
@@ -1017,7 +1045,8 @@ createApp({
     // 計算屬性與過濾器
     // ----------------------------------------------------
     const filteredItems = computed(() => {
-      return items.value.filter(item => {
+      const list = items.value || [];
+      return list.filter(item => {
         if (currentCategory.value !== 'all' && item.category !== currentCategory.value) {
           return false;
         }
@@ -1041,36 +1070,29 @@ createApp({
     });
 
     const claimedCount = computed(() => {
-      return items.value.filter(i => normalizeItemUsers(i).length > 0).length;
+      const list = items.value || [];
+      return list.filter(i => normalizeItemUsers(i).length > 0).length;
     });
 
     const progressPercent = computed(() => {
-      if (items.value.length === 0) return 0;
-      return Math.round((claimedCount.value / items.value.length) * 100);
+      const list = items.value || [];
+      if (list.length === 0) return 0;
+      return Math.round((claimedCount.value / list.length) * 100);
     });
 
     function getCategoryCount(catId) {
-      if (catId === 'all') return items.value.length;
-      return items.value.filter(i => i.category === catId).length;
+      const list = items.value || [];
+      if (catId === 'all') return list.length;
+      return list.filter(i => i.category === catId).length;
     }
 
     function getCategoryName(catId) {
-      const map = {
-        equipment: '用品裝備',
-        food: '食材食品',
-        consumables: '飲品消耗',
-        personal: '個人自備'
-      };
+      const map = { equipment: '用品裝備', food: '食材食品', consumables: '飲品消耗', personal: '個人自備' };
       return map[catId] || '一般';
     }
 
     function getCategoryBadgeClass(catId) {
-      const map = {
-        equipment: 'bg-orange-100 text-orange-800',
-        food: 'bg-red-100 text-red-800',
-        consumables: 'bg-blue-100 text-blue-800',
-        personal: 'bg-purple-100 text-purple-800'
-      };
+      const map = { equipment: 'bg-orange-100 text-orange-800', food: 'bg-red-100 text-red-800', consumables: 'bg-blue-100 text-blue-800', personal: 'bg-purple-100 text-purple-800' };
       return map[catId] || 'bg-stone-100 text-stone-700';
     }
 
@@ -1078,9 +1100,11 @@ createApp({
     // 摘要產生與 LINE 聊天室分享
     // ----------------------------------------------------
     const generatedSummaryText = computed(() => {
-      let text = `🏕️ 【${eventTitle.value}】\n`;
-      text += `📍 營地：${campSiteInfo.value.name}\n`;
-      text += `📅 認領進度：${claimedCount.value} / ${items.value.length} (${progressPercent.value}%)\n`;
+      const list = items.value || [];
+      const title = currentTrip.value ? currentTrip.value.title : "露營備忘錄";
+      let text = `🏕️ 【${title}】\n`;
+      if (campSiteInfo.value?.name) text += `📍 營地：${campSiteInfo.value.name}\n`;
+      text += `📅 認領進度：${claimedCount.value} / ${list.length} (${progressPercent.value}%)\n`;
       text += `=========================\n`;
 
       const catOrder = [
@@ -1091,7 +1115,7 @@ createApp({
       ];
 
       for (const cat of catOrder) {
-        const catItems = items.value.filter(i => i.category === cat.id);
+        const catItems = list.filter(i => i.category === cat.id);
         if (catItems.length > 0) {
           text += `\n${cat.title}\n`;
           for (const item of catItems) {
@@ -1120,9 +1144,7 @@ createApp({
       try {
         await navigator.clipboard.writeText(generatedSummaryText.value);
         copyButtonText.value = '✅ 已複製到剪貼簿！';
-        setTimeout(() => {
-          copyButtonText.value = '複製清單文字';
-        }, 2000);
+        setTimeout(() => { copyButtonText.value = '複製清單文字'; }, 2000);
       } catch (err) {
         alert('請手動選取文字進行複製！');
       }
@@ -1135,12 +1157,7 @@ createApp({
       }
 
       try {
-        await liff.sendMessages([
-          {
-            type: 'text',
-            text: generatedSummaryText.value
-          }
-        ]);
+        await liff.sendMessages([{ type: 'text', text: generatedSummaryText.value }]);
         alert('✅ 摘要已成功發送至 LINE 聊天室！');
         showExportModal.value = false;
       } catch (err) {
@@ -1149,38 +1166,11 @@ createApp({
       }
     }
 
-    // ----------------------------------------------------
-    // 設定儲存與載入
-    // ----------------------------------------------------
-    function loadSettingsFromStorage() {
-      eventTitleInput.value = localStorage.getItem('camp_event_title') || window.APP_CONFIG?.DEFAULT_EVENT_TITLE || '🌲 歡樂露營出遊備忘錄';
-      liffIdInput.value = localStorage.getItem('camp_liff_id') || window.APP_CONFIG?.LIFF_ID || '';
-      firebaseConfigInput.value = localStorage.getItem('camp_firebase_cfg') || (window.APP_CONFIG?.FIREBASE_CONFIG?.apiKey ? JSON.stringify(window.APP_CONFIG.FIREBASE_CONFIG, null, 2) : '');
-    }
-
-    function saveSettings() {
-      if (eventTitleInput.value) {
-        eventTitle.value = eventTitleInput.value;
-        localStorage.setItem('camp_event_title', eventTitle.value);
-      }
-      if (liffIdInput.value) {
-        localStorage.setItem('camp_liff_id', liffIdInput.value.trim());
-      }
-      if (firebaseConfigInput.value) {
-        localStorage.setItem('camp_firebase_cfg', firebaseConfigInput.value.trim());
-      }
-      persistData();
-      showSettingsModal.value = false;
-      alert('設定已儲存！頁面即將重新整理以套用新設定。');
-      window.location.reload();
-    }
-
     return {
       mainView,
       categories,
       itemCategoryOptions,
       pickerTabs,
-      eventTitle,
       currentCategory,
       searchQuery,
       filterUnclaimedOnly,
@@ -1188,6 +1178,22 @@ createApp({
       syncStatus,
       isLineClient,
       currentUser,
+      // 多活動管理
+      allTrips,
+      currentTripId,
+      currentTrip,
+      showTripSwitchModal,
+      showNewTripModal,
+      formNewTrip,
+      switchTrip,
+      createNewTrip,
+      deleteCurrentTrip,
+      // 成員白名單與鎖定防大亂
+      newMemberInput,
+      addMember,
+      removeMember,
+      toggleLockTrip,
+      // 物品清單
       items,
       filteredItems,
       claimedCount,
@@ -1196,7 +1202,6 @@ createApp({
       getCategoryName,
       getCategoryBadgeClass,
       promptChangeName,
-      // 多人認領與指派
       normalizeItemUsers,
       isClaimedByMe,
       claimItem,
@@ -1205,6 +1210,7 @@ createApp({
       assigningItem,
       assignTargetName,
       openAssignModal,
+      selectQuickMember,
       confirmAssignToUser,
       // 上車點檢
       myCarCheckItems,
@@ -1236,7 +1242,7 @@ createApp({
       openAddExpenseModal,
       saveExpense,
       deleteExpense,
-      // 彈窗
+      // 彈窗與設定
       showItemModal,
       editingItem,
       formItem,
@@ -1252,11 +1258,10 @@ createApp({
       copySummaryText,
       sendSummaryToLineChat,
       showSettingsModal,
-      eventTitleInput,
-      liffIdInput,
-      firebaseConfigInput,
+      eventTitle,
       saveSettings,
-      // 常用與快速勾選
+      persistData,
+      // 常用選單庫
       favorites,
       isFavorite,
       toggleFavorite,
