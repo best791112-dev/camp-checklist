@@ -684,6 +684,189 @@ createApp({
       }
     }
 
+    // ----------------------------------------------------
+    // 互動地圖精準選點器 (Interactive Map Location Picker)
+    // ----------------------------------------------------
+    const showMapPickerModal = ref(false);
+    const mapPickerTarget = ref('stop'); // 'stop' or 'campsite'
+    const mapSearchKeyword = ref('');
+    const pickedCoords = ref({ lat: 23.7028, lng: 120.4312 }); // 預設台灣中心
+    const pickedAddressName = ref('');
+    let leafletMap = null;
+    let pickerMarker = null;
+
+    function openMapPicker(target = 'stop') {
+      mapPickerTarget.value = target;
+      mapSearchKeyword.value = target === 'stop' ? (formStop.value.name || '') : (campSiteInfo.value.name || '');
+      
+      let currentQuery = target === 'stop' ? formStop.value.mapQuery : campSiteInfo.value.mapUrl;
+      let initLat = 23.7028;
+      let initLng = 120.4312;
+
+      // 檢查是否已包含經緯度
+      const match = currentQuery && currentQuery.match(/([-+]?\d+\.\d+)[,\s]+([-+]?\d+\.\d+)/);
+      if (match) {
+        initLat = parseFloat(match[1]);
+        initLng = parseFloat(match[2]);
+      }
+
+      pickedCoords.value = { lat: initLat, lng: initLng };
+      pickedAddressName.value = target === 'stop' ? (formStop.value.name || '已選取座標') : (campSiteInfo.value.name || '已選取座標');
+
+      showMapPickerModal.value = true;
+
+      // 在 DOM 更新後初始化 Leaflet
+      Vue.nextTick(() => {
+        setTimeout(() => {
+          initOrUpdateLeafletMap(initLat, initLng);
+          if (mapSearchKeyword.value && !match) {
+            searchMapLocation();
+          }
+        }, 180);
+      });
+    }
+
+    function initOrUpdateLeafletMap(lat, lng) {
+      const container = document.getElementById('pickerMap');
+      if (!container || typeof L === 'undefined') return;
+
+      if (!leafletMap) {
+        leafletMap = L.map('pickerMap', {
+          zoomControl: true
+        }).setView([lat, lng], 15);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(leafletMap);
+
+        pickerMarker = L.marker([lat, lng], { draggable: true }).addTo(leafletMap);
+
+        leafletMap.on('click', (e) => {
+          pickerMarker.setLatLng(e.latlng);
+          pickedCoords.value = { lat: e.latlng.lat, lng: e.latlng.lng };
+          reverseGeocode(e.latlng.lat, e.latlng.lng);
+        });
+
+        pickerMarker.on('dragend', () => {
+          const pos = pickerMarker.getLatLng();
+          pickedCoords.value = { lat: pos.lat, lng: pos.lng };
+          reverseGeocode(pos.lat, pos.lng);
+        });
+      } else {
+        leafletMap.invalidateSize();
+        leafletMap.setView([lat, lng], 15);
+        if (pickerMarker) pickerMarker.setLatLng([lat, lng]);
+      }
+    }
+
+    async function reverseGeocode(lat, lng) {
+      try {
+        pickedAddressName.value = '正在查詢地名...';
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=zh-TW`);
+        if (res.ok) {
+          const data = await res.json();
+          pickedAddressName.value = data.display_name?.split(',')[0] || data.name || `座標 ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        } else {
+          pickedAddressName.value = `座標 ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        }
+      } catch (e) {
+        pickedAddressName.value = `座標 ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      }
+    }
+
+    async function searchMapLocation() {
+      if (!mapSearchKeyword.value.trim() || typeof L === 'undefined') return;
+      const q = encodeURIComponent(mapSearchKeyword.value.trim());
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${q}&accept-language=zh-TW&limit=1`);
+        if (res.ok) {
+          const list = await res.json();
+          if (list && list.length > 0) {
+            const item = list[0];
+            const lat = parseFloat(item.lat);
+            const lng = parseFloat(item.lon);
+            pickedCoords.value = { lat, lng };
+            pickedAddressName.value = item.display_name?.split(',')[0] || mapSearchKeyword.value;
+            if (leafletMap && pickerMarker) {
+              leafletMap.setView([lat, lng], 16);
+              pickerMarker.setLatLng([lat, lng]);
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('搜尋地圖失敗:', e);
+      }
+    }
+
+    function useCurrentLocationInPicker() {
+      if (!navigator.geolocation) {
+        alert('您的裝置不支援 GPS 定位');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        pickedCoords.value = { lat, lng };
+        if (leafletMap && pickerMarker) {
+          leafletMap.setView([lat, lng], 16);
+          pickerMarker.setLatLng([lat, lng]);
+        }
+        reverseGeocode(lat, lng);
+      }, (err) => {
+        alert('無法取得目前位置，請確認定位權限是否開啟。');
+      });
+    }
+
+    function useCurrentLocation(target = 'stop') {
+      if (!navigator.geolocation) {
+        alert('您的裝置不支援 GPS 定位');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition((pos) => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        if (target === 'stop') {
+          formStop.value.mapQuery = mapUrl;
+          if (!formStop.value.name) formStop.value.name = '目前打卡位置';
+        } else {
+          campSiteInfo.value.mapUrl = mapUrl;
+        }
+        alert(`✅ 已成功帶入目前 GPS 精準座標：${lat}, ${lng}！`);
+      }, (err) => {
+        alert('無法取得目前位置，請確認定位權限是否開啟。');
+      });
+    }
+
+    function confirmPickedLocation() {
+      const lat = pickedCoords.value.lat.toFixed(6);
+      const lng = pickedCoords.value.lng.toFixed(6);
+      const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+      if (mapPickerTarget.value === 'stop') {
+        formStop.value.mapQuery = googleMapUrl;
+        if (!formStop.value.name.trim() && pickedAddressName.value) {
+          formStop.value.name = pickedAddressName.value;
+        }
+      } else {
+        campSiteInfo.value.mapUrl = googleMapUrl;
+        if (!campSiteInfo.value.name.trim() && pickedAddressName.value) {
+          campSiteInfo.value.name = pickedAddressName.value;
+        }
+        if (!campSiteInfo.value.address && pickedAddressName.value) {
+          campSiteInfo.value.address = pickedAddressName.value;
+        }
+      }
+
+      showMapPickerModal.value = false;
+    }
+
+    function closeMapPicker() {
+      showMapPickerModal.value = false;
+    }
+
     function addTripDay() {
       if (!currentTrip.value) return;
       const nextDayNum = currentTrip.value.tripDays.length + 1;
@@ -1401,6 +1584,18 @@ createApp({
       tripDays,
       getCalculatedStops,
       openMapNavigation,
+      // 互動地圖選點器
+      showMapPickerModal,
+      mapPickerTarget,
+      mapSearchKeyword,
+      pickedCoords,
+      pickedAddressName,
+      openMapPicker,
+      searchMapLocation,
+      useCurrentLocationInPicker,
+      useCurrentLocation,
+      confirmPickedLocation,
+      closeMapPicker,
       addTripDay,
       removeTripDay,
       showStopModal,
