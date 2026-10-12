@@ -61,69 +61,86 @@
   <div id="app" v-cloak class="max-w-2xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4">
 
     <!-- 頂部資訊與連線狀態 -->
-    <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3.5 sm:p-4 mb-3">
-      <div class="flex items-center justify-between gap-2 mb-2">
-        <!-- 點擊展開多活動切換選單 -->
-        <div class="flex items-center gap-2 flex-1 min-w-0">
-          <button 
-            @click="showTripSwitchModal = true" 
-            class="flex items-center gap-2 text-left hover:bg-stone-50 p-1 -m-1 rounded-xl transition group max-w-full"
-            title="點擊切換行程或新增活動">
-            <span class="text-2xl flex-shrink-0">🏕️</span>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                <h1 class="text-base sm:text-lg font-bold text-stone-800 truncate group-hover:text-emerald-700" :title="currentTrip?.title || eventTitle">
-                  {{ currentTrip?.title || eventTitle }}
-                </h1>
-                <i class="ph ph-caret-down text-xs text-stone-400 group-hover:text-emerald-600 flex-shrink-0"></i>
-              </div>
-              <div class="flex items-center gap-2 text-[11px] text-stone-500">
-                <span v-if="currentTrip?.date">📅 {{ currentTrip.date }}</span>
-                <span v-if="currentTrip?.isLocked" class="text-amber-600 font-semibold flex items-center gap-0.5">
-                  <i class="ph ph-lock-key-fill text-xs"></i> 已鎖定
-                </span>
-                <span class="text-stone-400">· 點此切換行程 ▾</span>
-              </div>
-            </div>
-          </button>
-        </div>
-        
-        <!-- 連線狀態、防誤改鎖定 & 設定按鈕 -->
-        <div class="flex items-center gap-1.5 flex-shrink-0">
-          <!-- 清單鎖定防誤改按鈕 -->
-          <button 
-            @click="toggleLockTrip" 
-            :class="['px-2 py-1 rounded-xl text-xs font-semibold flex items-center gap-1 transition border', currentTrip?.isLocked ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100']"
-            :title="currentTrip?.isLocked ? '清單已鎖定，點擊解鎖' : '點擊鎖定清單防誤改'">
-            <i :class="['ph text-sm', currentTrip?.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open']"></i>
-            <span class="hidden sm:inline">{{ currentTrip?.isLocked ? '已鎖定' : '未鎖定' }}</span>
-          </button>
-
-          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
+    <!-- 頂部資訊與導航區 (專為手機螢幕優化，分層排版，標題完整顯示絕不縮成...) -->
+    <header class="bg-white rounded-2xl shadow-sm border border-stone-200/80 p-3 sm:p-4 mb-3 space-y-2.5">
+      
+      <!-- 第 1 列：小工具狀態列 (連線狀態 + 鎖定開關 + 設定) -->
+      <div class="flex items-center justify-between text-xs pb-1 border-b border-stone-100">
+        <!-- 雲端同步狀態標籤 -->
+        <div class="flex items-center gap-1.5">
+          <span v-if="syncStatus === 'cloud'" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            即時同步
+            雲端即時同步
           </span>
-          <span v-else class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
+          <span v-else class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800">
             <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
             本地模式
           </span>
+        </div>
 
-          <button @click="showSettingsModal = true" class="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition" title="活動設定與成員名單">
-            <i class="ph ph-gear text-lg"></i>
+        <!-- 鎖定狀態 & 設定齒輪 -->
+        <div class="flex items-center gap-1.5">
+          <button 
+            @click="toggleLockTrip" 
+            :class="[
+              'px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition border',
+              currentTrip?.isLocked ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
+            ]"
+            :title="currentTrip?.isLocked ? '清單已鎖定，點擊解鎖' : '點擊鎖定清單防誤改'">
+            <i :class="['ph text-sm', currentTrip?.isLocked ? 'ph-lock-key-fill text-amber-600' : 'ph-lock-key-open text-stone-500']"></i>
+            <span>{{ currentTrip?.isLocked ? '清單已鎖定' : '未鎖定' }}</span>
+          </button>
+
+          <button 
+            @click="showSettingsModal = true" 
+            class="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition border border-stone-200" 
+            title="活動設定與成員名單">
+            <i class="ph ph-gear text-base"></i>
           </button>
         </div>
       </div>
 
-      <!-- 使用者身分資訊 (支援名字認領狀態) -->
-      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-1.5 border border-stone-200 text-xs">
+      <!-- 第 2 列：滿版活動卡片與切換器 (100% 寬度，完整換行顯示，絕不截斷成 .....) -->
+      <div 
+        @click="showTripSwitchModal = true"
+        class="bg-gradient-to-r from-emerald-50/80 via-stone-50 to-white hover:from-emerald-100/70 p-2.5 sm:p-3 rounded-xl border border-emerald-200/80 cursor-pointer transition flex items-center justify-between gap-2.5 shadow-2xs group">
+        
+        <div class="flex items-start gap-2.5 min-w-0 flex-1">
+          <span class="text-2xl sm:text-3xl flex-shrink-0 mt-0.5">🏕️</span>
+          <div class="min-w-0 flex-1">
+            <!-- 活動名稱：完整顯示不截斷 -->
+            <h1 class="text-base sm:text-lg font-bold text-stone-900 group-hover:text-emerald-800 leading-snug break-words">
+              {{ currentTrip?.title || eventTitle }}
+            </h1>
+            
+            <!-- 活動日期與物資數量 -->
+            <div class="flex items-center gap-2 flex-wrap text-xs text-stone-500 mt-1">
+              <span v-if="currentTrip?.date" class="font-medium text-stone-700">📅 {{ currentTrip.date }}</span>
+              <span v-if="currentTrip?.passcode" class="text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-semibold text-[10px] border border-purple-200">
+                🔒 密碼保護
+              </span>
+              <span class="text-stone-400">· 📦 {{ items.length }} 項物資</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側切換按鈕 -->
+        <div class="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-stone-200 group-hover:border-emerald-400 group-hover:bg-emerald-50 text-stone-700 group-hover:text-emerald-800 text-xs font-bold shadow-2xs transition">
+          <span>切換</span>
+          <i class="ph ph-caret-down text-xs"></i>
+        </div>
+      </div>
+
+      <!-- 第 3 列：使用者身分資訊 (支援名字認領狀態) -->
+      <div class="flex items-center justify-between bg-stone-50 rounded-xl px-3 py-2 border border-stone-200 text-xs">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <img v-if="currentUser.pictureUrl" :src="currentUser.pictureUrl" class="w-6 h-6 rounded-full object-cover border border-stone-300 flex-shrink-0" alt="avatar">
           <div v-else class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0">
             {{ currentUser.displayName.slice(0, 1) }}
           </div>
           <div class="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap">
-            <span class="text-stone-500 flex-shrink-0">目前身分：</span>
-            <span class="font-bold text-stone-800 truncate">{{ currentUser.displayName }}</span>
+            <span class="text-stone-500 flex-shrink-0">我的身分：</span>
+            <span class="font-bold text-stone-800 truncate text-xs sm:text-sm">{{ currentUser.displayName }}</span>
             <span v-if="myClaimedName" class="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
               <i class="ph ph-check-circle-fill text-[10px]"></i> 已綁定本團
             </span>
@@ -146,8 +163,8 @@
         </div>
       </div>
 
-      <!-- 頂部三大主分頁 Tab 切換導航 -->
-      <div class="grid grid-cols-3 gap-1.5 mt-3 pt-2.5 border-t border-stone-100">
+      <!-- 第 4 列：三大主分頁 Tab 切換導航 -->
+      <div class="grid grid-cols-3 gap-1.5 pt-1 border-t border-stone-100">
         <button 
           @click="mainView = 'items'" 
           :class="[
@@ -1421,9 +1438,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_10"></script>
-  <script src="./config.js?v=20261012_10"></script>
+  <script src="./default-items.js?v=20261012_11"></script>
+  <script src="./config.js?v=20261012_11"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_10"></script>
+  <script src="./app.js?v=20261012_11"></script>
 </body>
 </html>
