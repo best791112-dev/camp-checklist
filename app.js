@@ -192,12 +192,73 @@ createApp({
       return list;
     });
 
+    // 依子分類分組顯示
+    const groupedPickerLibrary = computed(() => {
+      const itemsList = filteredPickerLibrary.value;
+      if (itemsList.length === 0) return [];
+
+      const groupsMap = new Map();
+
+      for (const item of itemsList) {
+        let groupKey = '';
+        if (pickerCategory.value === 'favorites') {
+          // 常用清單按大類分組
+          const catIcons = { equipment: '⛺ 用品裝備', food: '🥩 食材食品', consumables: '🧊 飲品消耗', personal: '🎒 個人自備' };
+          groupKey = catIcons[item.category] || getCategoryName(item.category);
+        } else {
+          // 一般分類依子分類 subCategory 分組
+          groupKey = item.subCategory || '其他項目';
+        }
+
+        if (!groupsMap.has(groupKey)) {
+          groupsMap.set(groupKey, []);
+        }
+        groupsMap.get(groupKey).push(item);
+      }
+
+      const result = [];
+      groupsMap.forEach((list, key) => {
+        result.push({
+          title: key,
+          items: list
+        });
+      });
+      return result;
+    });
+
     function isPickerItemSelected(item) {
       return selectedPickerItems.value.some(i => i.name === item.name);
     }
 
+    function isGroupAllSelected(groupItems) {
+      const available = groupItems.filter(item => !isInCurrentList(item.name));
+      if (available.length === 0) return false;
+      return available.every(item => isPickerItemSelected(item));
+    }
+
+    function toggleSelectGroup(groupItems) {
+      const available = groupItems.filter(item => !isInCurrentList(item.name));
+      if (available.length === 0) return;
+
+      const allSelected = available.every(item => isPickerItemSelected(item));
+
+      if (allSelected) {
+        // 取消該組全選
+        selectedPickerItems.value = selectedPickerItems.value.filter(
+          item => !available.some(a => a.name === item.name)
+        );
+      } else {
+        // 該組全部勾選
+        available.forEach(item => {
+          if (!isPickerItemSelected(item)) {
+            selectedPickerItems.value.push(item);
+          }
+        });
+      }
+    }
+
     function togglePickItem(item) {
-      if (isInCurrentList(item.name)) return; // 已在清單中不可重複選
+      if (isInCurrentList(item.name)) return;
 
       const index = selectedPickerItems.value.findIndex(i => i.name === item.name);
       if (index >= 0) {
@@ -212,12 +273,10 @@ createApp({
       const allSelected = available.every(item => isPickerItemSelected(item));
 
       if (allSelected) {
-        // 取消全選
         selectedPickerItems.value = selectedPickerItems.value.filter(
           item => !available.some(a => a.name === item.name)
         );
       } else {
-        // 全選未加入的項目
         available.forEach(item => {
           if (!isPickerItemSelected(item)) {
             selectedPickerItems.value.push(item);
@@ -711,6 +770,9 @@ createApp({
       selectedPickerItems,
       openQuickPicker,
       filteredPickerLibrary,
+      groupedPickerLibrary,
+      isGroupAllSelected,
+      toggleSelectGroup,
       isInCurrentList,
       isPickerItemSelected,
       togglePickItem,
