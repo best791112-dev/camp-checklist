@@ -45,6 +45,7 @@ createApp({
         passcode: "", // 選填通關密碼
         isLocked: false, // 是否出發前鎖定
         members: ["王小明", "李小華"], // 成員白名單
+        claimedMembers: {}, // 成員認領綁定 (防重複選取)
         items: [],
         campSiteInfo: {
           name: "新竹尖石之美露營區",
@@ -234,9 +235,31 @@ createApp({
     // 多活動管理操作
     // ----------------------------------------------------
     function switchTrip(tripId) {
+      const target = allTrips.value.find(x => x.id === tripId);
+      if (target && target.passcode) {
+        const savedPass = sessionStorage.getItem('camp_pass_' + tripId);
+        if (savedPass !== target.passcode) {
+          const input = prompt(`🔒 本活動「${target.title}」設有通關密碼，請輸入：`);
+          if (input !== target.passcode) {
+            alert('❌ 密碼不正確，無法進入此活動！');
+            return;
+          }
+          sessionStorage.setItem('camp_pass_' + tripId, input);
+        }
+      }
       currentTripId.value = tripId;
       localStorage.setItem('camp_current_trip_id', tripId);
       showTripSwitchModal.value = false;
+
+      // 自動同步本活動之認領身分
+      const claims = target?.claimedMembers || {};
+      for (const name in claims) {
+        if (claims[name]?.userId === currentUser.value.userId) {
+          currentUser.value.displayName = name;
+          saveUserIdentity();
+          break;
+        }
+      }
     }
 
     function createNewTrip() {
@@ -255,6 +278,7 @@ createApp({
         passcode: formNewTrip.value.passcode.trim(),
         isLocked: false,
         members: [currentUser.value.displayName],
+        claimedMembers: {},
         items: initItems,
         campSiteInfo: {
           name: "待定營地 / 飯店",
@@ -304,6 +328,128 @@ createApp({
     // ----------------------------------------------------
     // 人員成員管理與防大亂
     // ----------------------------------------------------
+    // ----------------------------------------------------
+    // 人員成員管理與身分認領獨佔機制 (防大亂、防重複選取)
+    // ----------------------------------------------------
+    const showClaimMemberModal = ref(false);
+    const customNewMemberName = ref('');
+
+    // 當前使用者在目前活動中認領的名字
+    const myClaimedName = computed(() => {
+      const claims = currentTrip.value?.claimedMembers || {};
+      for (const name in claims) {
+        if (claims[name]?.userId === currentUser.value.userId) {
+          return name;
+        }
+      }
+      return null;
+    });
+
+    // 檢查某成員名稱是否已被任何人認領
+    function isMemberClaimed(name) {
+      const claims = currentTrip.value?.claimedMembers || {};
+      return !!claims[name];
+    }
+
+    // 取得某成員名稱的認領者詳細資訊
+    function getMemberClaimant(name) {
+      const claims = currentTrip.value?.claimedMembers || {};
+      return claims[name] || null;
+    }
+
+    // 檢查某成員是否被「其他人」認領了 (自己認領的除外)
+    function isClaimedByOther(name) {
+      const claims = currentTrip.value?.claimedMembers || {};
+      const claimant = claims[name];
+      return !!(claimant && claimant.userId !== currentUser.value.userId);
+    }
+
+    // 檢查某成員是否由「自己」認領
+    function isClaimedByMeName(name) {
+      const claims = currentTrip.value?.claimedMembers || {};
+      const claimant = claims[name];
+      return !!(claimant && claimant.userId === currentUser.value.userId);
+    }
+
+    // 認領身分/名字 (獨佔性：防重複認領)
+    function claimMemberName(name) {
+      if (!name || !name.trim() || !currentTrip.value) return;
+      const targetName = name.trim();
+
+      if (currentTrip.value.isLocked) {
+        alert('⚠️ 目前活動已鎖定，無法變更成員身分認領！');
+        return;
+      }
+
+      if (!currentTrip.value.claimedMembers) {
+        currentTrip.value.claimedMembers = {};
+      }
+
+      // 檢查是否已被其他人認領
+      const existing = currentTrip.value.claimedMembers[targetName];
+      if (existing && existing.userId !== currentUser.value.userId) {
+        alert(`❌ 名字「${targetName}」已被其他群友認領！每位成員只能認領一個獨立名字，請選擇您自己的名字。`);
+        return;
+      }
+
+      // 若自己原本已認領了其他名字，先自動釋放舊名字
+      for (const key in currentTrip.value.claimedMembers) {
+        if (currentTrip.value.claimedMembers[key]?.userId === currentUser.value.userId) {
+          delete currentTrip.value.claimedMembers[key];
+        }
+      }
+
+      // 綁定新名字
+      currentTrip.value.claimedMembers[targetName] = {
+        userId: currentUser.value.userId,
+        lineName: currentUser.value.displayName,
+        claimedAt: new Date().toLocaleTimeString('zh-TW', { hour12: false })
+      };
+
+      // 將當前使用者 displayName 設為該名字
+      currentUser.value.displayName = targetName;
+      saveUserIdentity();
+
+      // 確保該名字在 members 名單中
+      if (!currentTrip.value.members) currentTrip.value.members = [];
+      if (!currentTrip.value.members.includes(targetName)) {
+        currentTrip.value.members.push(targetName);
+      }
+
+      persistData();
+      showClaimMemberModal.value = false;
+      alert(`🎉 認領成功！您現在在「${currentTrip.value.title}」的身分為【${targetName}】。\n其他人無法再重複選取此名字，主揪指定給您的物品將自動顯示於「上車點檢」！`);
+    }
+
+    // 解除認領 (可由本人解除或主揪重置)
+    function releaseMemberClaim(name) {
+      if (!currentTrip.value || !currentTrip.value.claimedMembers) return;
+      if (currentTrip.value.isLocked) {
+        alert('⚠️ 目前活動已鎖定，無法解除認領！');
+        return;
+      }
+
+      if (confirm(`確定要解除「${name}」的認領綁定嗎？解除後該名字可重新被任何人選取。`)) {
+        delete currentTrip.value.claimedMembers[name];
+        persistData();
+        alert(`✅ 已解除「${name}」的認領綁定。`);
+      }
+    }
+
+    // 自行新增名字並直接認領
+    function addNewMemberAndClaim() {
+      if (!customNewMemberName.value.trim() || !currentTrip.value) return;
+      const newName = customNewMemberName.value.trim();
+      customNewMemberName.value = '';
+
+      if (!currentTrip.value.members) currentTrip.value.members = [];
+      if (!currentTrip.value.members.includes(newName)) {
+        currentTrip.value.members.push(newName);
+      }
+
+      claimMemberName(newName);
+    }
+
     function addMember() {
       if (!newMemberInput.value.trim() || !currentTrip.value) return;
       const name = newMemberInput.value.trim();
@@ -317,8 +463,13 @@ createApp({
 
     function removeMember(name) {
       if (!currentTrip.value || !currentTrip.value.members) return;
-      currentTrip.value.members = currentTrip.value.members.filter(m => m !== name);
-      persistData();
+      if (confirm(`確定要從名單中移除「${name}」嗎？`)) {
+        currentTrip.value.members = currentTrip.value.members.filter(m => m !== name);
+        if (currentTrip.value.claimedMembers && currentTrip.value.claimedMembers[name]) {
+          delete currentTrip.value.claimedMembers[name];
+        }
+        persistData();
+      }
     }
 
     function toggleLockTrip() {
@@ -351,7 +502,12 @@ createApp({
 
     function isClaimedByMe(item) {
       const users = normalizeItemUsers(item);
-      return users.some(u => u.userId === currentUser.value.userId);
+      const myName = myClaimedName.value || currentUser.value.displayName;
+      return users.some(u => {
+        return u.userId === currentUser.value.userId ||
+               (u.displayName && u.displayName === currentUser.value.displayName) ||
+               (myName && u.displayName === myName);
+      });
     }
 
     function claimItem(item) {
@@ -359,8 +515,17 @@ createApp({
         alert('⚠️ 目前活動清單已被主揪鎖定，無法更改認領！');
         return;
       }
+
+      // 如果尚未認領本團身分且本團有成員名單，友善提醒先認領名字
+      if (!myClaimedName.value && currentTrip.value?.members?.length > 0) {
+        if (confirm('💡 建議先認領您的出遊身分/名字，讓大家清楚知道是誰帶的。\n是否現在選擇您的名字？')) {
+          showClaimMemberModal.value = true;
+          return;
+        }
+      }
+
       const users = normalizeItemUsers(item);
-      if (users.some(u => u.userId === currentUser.value.userId)) return;
+      if (users.some(u => u.userId === currentUser.value.userId || u.displayName === currentUser.value.displayName)) return;
 
       users.push({
         userId: currentUser.value.userId,
@@ -378,14 +543,18 @@ createApp({
       persistData();
     }
 
-    function unclaimItem(item, targetUserId = null) {
+    function unclaimItem(item, targetUserIdOrName = null) {
       if (currentTrip.value?.isLocked) {
         alert('⚠️ 目前活動清單已被主揪鎖定，無法取消認領！');
         return;
       }
-      const uidToCancel = targetUserId || currentUser.value.userId;
+      const myName = myClaimedName.value || currentUser.value.displayName;
       let users = normalizeItemUsers(item);
-      users = users.filter(u => u.userId !== uidToCancel);
+      if (targetUserIdOrName) {
+        users = users.filter(u => u.userId !== targetUserIdOrName && u.displayName !== targetUserIdOrName);
+      } else {
+        users = users.filter(u => u.userId !== currentUser.value.userId && u.displayName !== currentUser.value.displayName && u.displayName !== myName);
+      }
       item.assignedUsers = users;
 
       item.assignedTo = users[0]?.userId || null;
@@ -1188,11 +1357,21 @@ createApp({
       switchTrip,
       createNewTrip,
       deleteCurrentTrip,
-      // 成員白名單與鎖定防大亂
+      // 成員白名單與身分認領獨佔 (防大亂、防重複選取)
       newMemberInput,
       addMember,
       removeMember,
       toggleLockTrip,
+      showClaimMemberModal,
+      customNewMemberName,
+      myClaimedName,
+      isMemberClaimed,
+      getMemberClaimant,
+      isClaimedByOther,
+      isClaimedByMeName,
+      claimMemberName,
+      releaseMemberClaim,
+      addNewMemberAndClaim,
       // 物品清單
       items,
       filteredItems,
