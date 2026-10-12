@@ -45,7 +45,15 @@
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB9oe8wfbeYEwBdaU8eG9zuF4XcmXweMxQ&language=zh-TW&region=TW"></script>
 
   <style>
-    body {
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      overflow-x: hidden;
+      width: 100%;
+      max-width: 100vw;
+      margin: 0;
+      padding: 0;
       -webkit-tap-highlight-color: transparent;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
     }
@@ -59,9 +67,9 @@
     }
   </style>
 </head>
-<body class="bg-stone-100 text-stone-800 min-h-screen pb-28">
+<body class="bg-stone-100 text-stone-800 min-h-screen pb-28 overflow-x-hidden">
 
-  <div id="app" v-cloak class="max-w-2xl mx-auto px-3 sm:px-4 pt-3 sm:pt-4">
+  <div id="app" v-cloak class="max-w-2xl mx-auto px-2.5 sm:px-4 pt-2.5 sm:pt-4 w-full overflow-hidden">
 
     <!-- 頂部資訊與連線狀態 -->
     <!-- 頂部資訊與導航區 (專為手機螢幕優化，分層排版，標題完整顯示絕不縮成...) -->
@@ -264,30 +272,30 @@
       </div>
 
       <!-- 快捷過濾與搜尋 -->
-      <div class="flex items-center gap-2 mb-3">
-        <div class="relative flex-1">
-          <i class="ph ph-magnifying-glass absolute left-3 top-2 text-stone-400 text-xs"></i>
+      <div class="flex items-center gap-1.5 mb-3">
+        <div class="relative flex-1 min-w-0">
+          <i class="ph ph-magnifying-glass absolute left-2.5 top-2 text-stone-400 text-xs"></i>
           <input 
             v-model="searchQuery" 
             type="text" 
             placeholder="搜尋物品、負責人..." 
-            class="w-full bg-white border border-stone-200 rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            class="w-full bg-white border border-stone-200 rounded-xl pl-7 pr-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500">
         </div>
         
         <button 
           @click="filterMyItemsOnly = !filterMyItemsOnly"
           :class="[
-            'px-2.5 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
+            'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
             filterMyItemsOnly ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
           ]">
           <i class="ph ph-user"></i>
-          <span>只看我帶的</span>
+          <span>我帶的</span>
         </button>
 
         <button 
           @click="filterUnclaimedOnly = !filterUnclaimedOnly"
           :class="[
-            'px-2.5 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
+            'px-2 py-1.5 rounded-xl text-xs font-medium border flex items-center gap-1 transition flex-shrink-0',
             filterUnclaimedOnly ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'bg-white border-stone-200 text-stone-600'
           ]">
           <i class="ph ph-funnel"></i>
@@ -711,15 +719,15 @@
     <!-- ============================================================== -->
     <!-- 底部固定操作導航列 (無論在各頁籤均可快速呼叫) -->
     <!-- ============================================================== -->
-    <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-stone-200 px-4 py-2.5 z-30 shadow-lg">
-      <div class="max-w-2xl mx-auto flex items-center justify-between gap-2">
+    <nav class="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-stone-200 px-2 sm:px-4 py-2 z-30 shadow-lg">
+      <div class="max-w-2xl mx-auto flex items-center justify-between gap-1.5">
         
         <!-- 主按鈕：選單勾選庫 -->
         <button 
           type="button"
           @click="openQuickPicker('favorites')" 
-          class="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition cursor-pointer select-none">
-          <i class="ph ph-list-checks text-base"></i>
+          class="flex-1 py-2 px-2 sm:px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1 shadow-md shadow-emerald-600/20 transition cursor-pointer select-none">
+          <i class="ph ph-list-checks text-sm sm:text-base"></i>
           <span>選單勾選庫</span>
         </button>
 
@@ -727,8 +735,8 @@
         <button 
           type="button"
           @click="openAddModal" 
-          class="py-2.5 px-3 bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer select-none">
-          <i class="ph ph-plus-circle text-base text-stone-500"></i>
+          class="py-2 px-2 sm:px-3 bg-stone-100 hover:bg-stone-200 active:bg-stone-300 text-stone-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1 transition cursor-pointer select-none flex-shrink-0">
+          <i class="ph ph-plus-circle text-sm sm:text-base text-stone-500"></i>
           <span>自訂物品</span>
         </button>
 
@@ -736,8 +744,8 @@
         <button 
           type="button"
           @click="shareToLineOrExport" 
-          class="py-2.5 px-3 bg-stone-800 hover:bg-stone-900 active:bg-black text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer select-none">
-          <i class="ph ph-share-network text-base text-emerald-400"></i>
+          class="py-2 px-2 sm:px-3 bg-stone-800 hover:bg-stone-900 active:bg-black text-white rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1 shadow-sm transition cursor-pointer select-none flex-shrink-0">
+          <i class="ph ph-share-network text-sm sm:text-base text-emerald-400"></i>
           <span>LINE 摘要</span>
         </button>
       </div>
@@ -1722,9 +1730,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_15"></script>
-  <script src="./config.js?v=20261012_15"></script>
+  <script src="./default-items.js?v=20261012_16"></script>
+  <script src="./config.js?v=20261012_16"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_15"></script>
+  <script src="./app.js?v=20261012_16"></script>
 </body>
 </html>
