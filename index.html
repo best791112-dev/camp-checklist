@@ -366,68 +366,91 @@
           </button>
         </div>
 
-        <!-- 勾選清單列表 -->
-        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-[220px]">
-          <div v-if="filteredPickerLibrary.length === 0" class="text-center py-8 text-stone-400 text-xs">
+        <!-- 勾選清單列表 (依子分類分組) -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 pr-1 min-h-[220px]">
+          <div v-if="groupedPickerLibrary.length === 0" class="text-center py-8 text-stone-400 text-xs">
             <span v-if="pickerCategory === 'favorites'">
               ⭐ 您尚未收藏任何「經常選擇」項目！<br>可以在其他分頁中點擊星號 ⭐ 加入常用。
             </span>
             <span v-else>找不到符合條件的項目。</span>
           </div>
 
-          <div 
-            v-for="item in filteredPickerLibrary" 
-            :key="item.name"
-            @click="togglePickItem(item)"
-            :class="[
-              'p-2.5 rounded-xl border transition flex items-center justify-between gap-2.5 cursor-pointer text-xs select-none',
-              isInCurrentList(item.name)
-                ? 'bg-stone-50 border-stone-200 opacity-60 cursor-not-allowed'
-                : (isPickerItemSelected(item) ? 'bg-emerald-50/80 border-emerald-500 shadow-xs' : 'bg-white border-stone-200 hover:border-emerald-300')
-            ]">
-            
-            <div class="flex items-center gap-2.5 min-w-0 flex-1">
-              <!-- Checkbox -->
-              <div class="flex-shrink-0">
-                <span v-if="isInCurrentList(item.name)" class="text-stone-400">
-                  <i class="ph ph-check-circle-fill text-base text-stone-400"></i>
-                </span>
-                <span v-else-if="isPickerItemSelected(item)" class="text-emerald-600">
-                  <i class="ph ph-check-square-fill text-base"></i>
-                </span>
-                <span v-else class="text-stone-300">
-                  <i class="ph ph-square text-base"></i>
-                </span>
-              </div>
+          <!-- 各子分類分組 -->
+          <div v-for="group in groupedPickerLibrary" :key="group.title" class="space-y-1.5">
+            <!-- 分組標題列 -->
+            <div class="flex items-center justify-between px-1 text-xs pt-1">
+              <span class="font-bold text-stone-700 flex items-center gap-1.5">
+                <span class="w-1.5 h-3 bg-emerald-600 rounded-full inline-block"></span>
+                <span>{{ group.title }}</span>
+                <span class="text-[11px] font-normal text-stone-400">({{ group.items.length }})</span>
+              </span>
 
-              <!-- 資訊 -->
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="font-semibold text-stone-800 text-xs">{{ item.name }}</span>
-                  <span v-if="item.quantity" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
-                    {{ item.quantity }}
-                  </span>
-                  <span v-if="isInCurrentList(item.name)" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-medium">
-                    已在清單中
-                  </span>
-                </div>
-                <p v-if="item.note" class="text-[11px] text-stone-400 truncate mt-0.5">
-                  {{ item.note }}
-                </p>
-              </div>
+              <!-- 本組全選按鈕 -->
+              <button 
+                type="button"
+                @click="toggleSelectGroup(group.items)"
+                class="text-[11px] px-2 py-0.5 rounded-md text-emerald-700 hover:bg-emerald-50 border border-emerald-200 transition font-medium">
+                {{ isGroupAllSelected(group.items) ? '取消本組' : '全選本組' }}
+              </button>
             </div>
 
-            <!-- 星號 (切換經常選擇) -->
-            <button 
-              type="button"
-              @click.stop="toggleFavorite(item.name)" 
-              class="p-1 rounded hover:bg-stone-100 transition flex-shrink-0"
-              :title="isFavorite(item.name) ? '取消常用' : '加為常用'">
-              <i :class="[
-                'ph text-base transition',
-                isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
-              ]"></i>
-            </button>
+            <!-- 該組物品卡片清單 -->
+            <div class="space-y-1.5">
+              <div 
+                v-for="item in group.items" 
+                :key="item.name"
+                @click="togglePickItem(item)"
+                :class="[
+                  'p-2.5 rounded-xl border transition flex items-center justify-between gap-2.5 cursor-pointer text-xs select-none',
+                  isInCurrentList(item.name)
+                    ? 'bg-stone-50 border-stone-200 opacity-60 cursor-not-allowed'
+                    : (isPickerItemSelected(item) ? 'bg-emerald-50/80 border-emerald-500 shadow-xs' : 'bg-white border-stone-200 hover:border-emerald-300')
+                ]">
+                
+                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                  <!-- Checkbox -->
+                  <div class="flex-shrink-0">
+                    <span v-if="isInCurrentList(item.name)" class="text-stone-400">
+                      <i class="ph ph-check-circle-fill text-base text-stone-400"></i>
+                    </span>
+                    <span v-else-if="isPickerItemSelected(item)" class="text-emerald-600">
+                      <i class="ph ph-check-square-fill text-base"></i>
+                    </span>
+                    <span v-else class="text-stone-300">
+                      <i class="ph ph-square text-base"></i>
+                    </span>
+                  </div>
+
+                  <!-- 資訊 -->
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="font-semibold text-stone-800 text-xs">{{ item.name }}</span>
+                      <span v-if="item.quantity" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 text-stone-600">
+                        {{ item.quantity }}
+                      </span>
+                      <span v-if="isInCurrentList(item.name)" class="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-medium">
+                        已在清單中
+                      </span>
+                    </div>
+                    <p v-if="item.note" class="text-[11px] text-stone-400 truncate mt-0.5">
+                      {{ item.note }}
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 星號 (切換經常選擇) -->
+                <button 
+                  type="button"
+                  @click.stop="toggleFavorite(item.name)" 
+                  class="p-1 rounded hover:bg-stone-100 transition flex-shrink-0"
+                  :title="isFavorite(item.name) ? '取消常用' : '加為常用'">
+                  <i :class="[
+                    'ph text-base transition',
+                    isFavorite(item.name) ? 'ph-star-fill text-amber-400' : 'ph-star text-stone-300 hover:text-amber-400'
+                  ]"></i>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -614,9 +637,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_03"></script>
-  <script src="./config.js?v=20261012_03"></script>
+  <script src="./default-items.js?v=20261012_05"></script>
+  <script src="./config.js?v=20261012_05"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_03"></script>
+  <script src="./app.js?v=20261012_05"></script>
 </body>
 </html>
