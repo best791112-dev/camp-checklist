@@ -818,13 +818,18 @@ createApp({
     // ----------------------------------------------------
     // Google 地圖官方互動選點器 (Google Maps API + 圖釘拖曳)
     // ----------------------------------------------------
+    // Google 正版官方圖資選點器 (免 API Key，永不報錯)
+    // ----------------------------------------------------
     const showMapPickerModal = ref(false);
     const mapPickerTarget = ref('stop'); // 'stop' or 'campsite'
     const mapSearchKeyword = ref('');
     const pickedCoords = ref({ lat: 23.7028, lng: 120.4312 }); // 預設台灣中心
     const pickedAddressName = ref('');
-    let googleMapInstance = null;
-    let googleMarkerInstance = null;
+    const currentMapLayerType = ref('roadmap'); // 'roadmap' or 'satellite'
+    let leafletMapInstance = null;
+    let leafletMarkerInstance = null;
+    let googleRoadmapLayer = null;
+    let googleSatelliteLayer = null;
 
     function openMapPicker(target = 'stop') {
       mapPickerTarget.value = target;
@@ -846,7 +851,6 @@ createApp({
 
       showMapPickerModal.value = true;
 
-      // 在 DOM 更新後初始化 Google 地圖
       Vue.nextTick(() => {
         setTimeout(() => {
           initOrUpdateGoogleMap(initLat, initLng);
@@ -859,89 +863,124 @@ createApp({
 
     function initOrUpdateGoogleMap(lat, lng) {
       const container = document.getElementById('googlePickerMap');
-      if (!container || typeof google === 'undefined' || !google.maps) return;
+      if (!container || typeof L === 'undefined') return;
 
-      const center = { lat, lng };
+      const center = [lat, lng];
 
-      if (!googleMapInstance) {
-        googleMapInstance = new google.maps.Map(container, {
+      // Google 經典紅色水滴圖釘
+      const googlePinIcon = L.divIcon({
+        className: 'google-custom-pin',
+        html: `<div style="display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.45));cursor:grab;">
+          <svg width="34" height="46" viewBox="0 0 384 512" fill="#EA4335">
+            <path d="M172.268 501.67C26.97 291.031 0 269.413 0 192 0 85.961 85.961 0 192 0s192 85.961 192 192c0 77.413-26.97 99.031-172.268 309.67-9.535 13.774-29.93 13.773-39.464 0z"/>
+            <circle cx="192" cy="192" r="70" fill="#FFFFFF"/>
+          </svg>
+        </div>`,
+        iconSize: [34, 46],
+        iconAnchor: [17, 46]
+      });
+
+      if (!leafletMapInstance) {
+        leafletMapInstance = L.map(container, {
           center: center,
           zoom: 16,
-          mapTypeControl: true,
-          streetViewControl: false,
-          fullscreenControl: false,
           zoomControl: true,
-          gestureHandling: 'greedy' // 手機上單指滑動順暢
+          attributionControl: false
         });
 
-        googleMarkerInstance = new google.maps.Marker({
-          position: center,
-          map: googleMapInstance,
-          draggable: true,
-          animation: google.maps.Animation.DROP,
-          title: "可拖曳圖釘精確定位"
+        // 綁定正版 Google 地圖圖資 (繁體中文)
+        googleRoadmapLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=zh-TW', {
+          maxZoom: 20
         });
+
+        googleSatelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}&hl=zh-TW', {
+          maxZoom: 20
+        });
+
+        googleRoadmapLayer.addTo(leafletMapInstance);
+
+        // 放置圖釘
+        leafletMarkerInstance = L.marker(center, {
+          icon: googlePinIcon,
+          draggable: true
+        }).addTo(leafletMapInstance);
 
         // 點擊地圖任意處放圖釘
-        googleMapInstance.addListener('click', (e) => {
-          const clickedLat = e.latLng.lat();
-          const clickedLng = e.latLng.lng();
-          googleMarkerInstance.setPosition(e.latLng);
+        leafletMapInstance.on('click', (e) => {
+          const clickedLat = e.latlng.lat;
+          const clickedLng = e.latlng.lng;
+          leafletMarkerInstance.setLatLng(e.latlng);
           pickedCoords.value = { lat: clickedLat, lng: clickedLng };
-          reverseGeocodeGoogle(clickedLat, clickedLng);
+          reverseGeocodeNominatim(clickedLat, clickedLng);
         });
 
         // 拖曳圖釘放開
-        googleMarkerInstance.addListener('dragend', (e) => {
-          const pos = googleMarkerInstance.getPosition();
-          const draggedLat = pos.lat();
-          const draggedLng = pos.lng();
-          pickedCoords.value = { lat: draggedLat, lng: draggedLng };
-          reverseGeocodeGoogle(draggedLat, draggedLng);
+        leafletMarkerInstance.on('dragend', (e) => {
+          const pos = leafletMarkerInstance.getLatLng();
+          pickedCoords.value = { lat: pos.lat, lng: pos.lng };
+          reverseGeocodeNominatim(pos.lat, pos.lng);
         });
       } else {
-        googleMapInstance.setCenter(center);
-        googleMapInstance.setZoom(16);
-        if (googleMarkerInstance) {
-          googleMarkerInstance.setPosition(center);
+        leafletMapInstance.setView(center, 16);
+        if (leafletMarkerInstance) {
+          leafletMarkerInstance.setLatLng(center);
         }
-        google.maps.event.trigger(googleMapInstance, 'resize');
+        leafletMapInstance.invalidateSize();
       }
     }
 
-    function reverseGeocodeGoogle(lat, lng) {
-      if (typeof google === 'undefined' || !google.maps || !google.maps.Geocoder) return;
-      const geocoder = new google.maps.Geocoder();
-      pickedAddressName.value = '正在查詢 Google 地點資訊...';
-      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          pickedAddressName.value = results[0].formatted_address.replace(/台灣|台湾/, '').trim();
-        } else {
+    function switchGoogleMapLayer(type) {
+      if (!leafletMapInstance || !googleRoadmapLayer || !googleSatelliteLayer) return;
+      currentMapLayerType.value = type;
+      if (type === 'satellite') {
+        leafletMapInstance.removeLayer(googleRoadmapLayer);
+        googleSatelliteLayer.addTo(leafletMapInstance);
+      } else {
+        leafletMapInstance.removeLayer(googleSatelliteLayer);
+        googleRoadmapLayer.addTo(leafletMapInstance);
+      }
+    }
+
+    function reverseGeocodeNominatim(lat, lng) {
+      pickedAddressName.value = '正在取得地點名稱...';
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=zh-TW`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.display_name) {
+            const clean = data.display_name.replace(/台灣|Taiwan|, /g, ' ').trim();
+            pickedAddressName.value = clean.split(' ').slice(0, 3).join(' ') || clean;
+          } else {
+            pickedAddressName.value = `座標 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          }
+        })
+        .catch(() => {
           pickedAddressName.value = `座標 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        }
-      });
+        });
     }
 
     function searchGoogleMapLocation() {
-      if (!mapSearchKeyword.value.trim() || typeof google === 'undefined' || !google.maps) return;
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address: mapSearchKeyword.value.trim(), region: 'TW' }, (results, status) => {
-        if (status === 'OK' && results && results[0]) {
-          const loc = results[0].geometry.location;
-          const lat = loc.lat();
-          const lng = loc.lng();
-          pickedCoords.value = { lat, lng };
-          pickedAddressName.value = results[0].formatted_address.replace(/台灣|台湾/, '').trim();
-          if (googleMapInstance && googleMarkerInstance) {
-            googleMapInstance.setCenter(loc);
-            googleMapInstance.setZoom(16);
-            googleMarkerInstance.setPosition(loc);
+      if (!mapSearchKeyword.value.trim()) return;
+      pickedAddressName.value = `正在搜尋「${mapSearchKeyword.value.trim()}」...`;
+      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(mapSearchKeyword.value.trim())}&countrycodes=tw&limit=1&accept-language=zh-TW`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            const item = data[0];
+            const lat = parseFloat(item.lat);
+            const lng = parseFloat(item.lon);
+            pickedCoords.value = { lat, lng };
+            pickedAddressName.value = item.display_name.replace(/台灣|Taiwan|, /g, ' ').trim();
+            if (leafletMapInstance && leafletMarkerInstance) {
+              leafletMapInstance.setView([lat, lng], 16);
+              leafletMarkerInstance.setLatLng([lat, lng]);
+            }
+          } else {
+            pickedAddressName.value = `未搜尋到精確位置，請點擊地圖任意處放圖釘，或點上方「開啟 Google Maps 挑選」`;
           }
-        } else {
-          // 若直接搜尋無結果，嘗試開啟
-          console.warn('Google 地圖未找到精確地址結果');
-        }
-      });
+        })
+        .catch(() => {
+          pickedAddressName.value = `請直接點擊地圖任意處放置圖釘`;
+        });
     }
 
     function openExternalGoogleMaps() {
@@ -988,13 +1027,11 @@ createApp({
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         pickedCoords.value = { lat, lng };
-        if (googleMapInstance && googleMarkerInstance) {
-          const loc = new google.maps.LatLng(lat, lng);
-          googleMapInstance.setCenter(loc);
-          googleMapInstance.setZoom(16);
-          googleMarkerInstance.setPosition(loc);
+        if (leafletMapInstance && leafletMarkerInstance) {
+          leafletMapInstance.setView([lat, lng], 16);
+          leafletMarkerInstance.setLatLng([lat, lng]);
         }
-        reverseGeocodeGoogle(lat, lng);
+        reverseGeocodeNominatim(lat, lng);
       }, (err) => {
         alert('無法取得目前位置，請確認定位權限是否開啟。');
       });
@@ -1783,12 +1820,14 @@ createApp({
       tripDays,
       getCalculatedStops,
       openMapNavigation,
-      // 互動地圖選點器 (Google Maps 官方選點)
+      // 互動地圖選點器 (Google Maps 官方圖資選點)
       showMapPickerModal,
       mapPickerTarget,
       mapSearchKeyword,
       pickedCoords,
       pickedAddressName,
+      currentMapLayerType,
+      switchGoogleMapLayer,
       openMapPicker,
       searchGoogleMapLocation,
       openExternalGoogleMaps,
