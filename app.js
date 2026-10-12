@@ -79,9 +79,11 @@ createApp({
     const liffIdInput = ref('');
     const firebaseConfigInput = ref('');
 
-    // Firebase Firestore 參考
+    // Firebase 參考 (雙軌支援：免帳單的 Realtime Database 與 Firestore)
     let firestoreDb = null;
     let docUnsubscribe = null;
+    let realtimeDb = null;
+    let rtdbRef = null;
     const FIRESTORE_COLLECTION = 'camping_events';
     const FIRESTORE_DOC_ID = 'active_list';
 
@@ -391,7 +393,7 @@ createApp({
     }
 
     // ----------------------------------------------------
-    // Firebase 初始化與即時同步
+    // Firebase 初始化與即時同步 (雙軌支援：Realtime Database 與 Firestore)
     // ----------------------------------------------------
     async function initFirebaseIfConfigured() {
       let cfg = null;
@@ -414,14 +416,60 @@ createApp({
         if (!firebase.apps.length) {
           firebase.initializeApp(cfg);
         }
+
+        // 1. 優先嘗試 Realtime Database (100% 免費、免信用卡、免帳單)
+        if (typeof firebase.database === 'function') {
+          try {
+            realtimeDb = firebase.database();
+            rtdbRef = realtimeDb.ref('camping_event');
+            rtdbRef.on('value', (snapshot) => {
+              const data = snapshot.val();
+              if (data) {
+                syncStatus.value = 'cloud';
+                if (data.items && Array.isArray(data.items)) {
+                  items.value = data.items;
+                  localStorage.setItem('camp_items_cache', JSON.stringify(data.items));
+                }
+                if (data.eventTitle) {
+                  eventTitle.value = data.eventTitle;
+                }
+              } else {
+                syncStatus.value = 'cloud';
+                rtdbRef.set({
+                  eventTitle: eventTitle.value,
+                  items: items.value.length ? items.value : window.DEFAULT_CAMPING_ITEMS || [],
+                  updatedAt: Date.now()
+                });
+              }
+            }, (err) => {
+              console.warn('Realtime Database 嘗試轉向 Firestore:', err.message);
+              initFirestoreFallback();
+            });
+            return;
+          } catch (e) {
+            console.warn('Realtime Database 錯誤，改用 Firestore:', e);
+          }
+        }
+
+        initFirestoreFallback();
+
+      } catch (err) {
+        console.warn('Firebase 初始化失敗，使用本機模式:', err);
+        syncStatus.value = 'local';
+      }
+    }
+
+    function initFirestoreFallback() {
+      try {
+        if (typeof firebase.firestore !== 'function') return;
         firestoreDb = firebase.firestore();
-        syncStatus.value = 'cloud';
 
         if (docUnsubscribe) docUnsubscribe();
 
         const docRef = firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC_ID);
         docUnsubscribe = docRef.onSnapshot((doc) => {
           if (doc.exists) {
+            syncStatus.value = 'cloud';
             const data = doc.data();
             if (data.items && Array.isArray(data.items)) {
               items.value = data.items;
@@ -431,6 +479,7 @@ createApp({
               eventTitle.value = data.eventTitle;
             }
           } else {
+            syncStatus.value = 'cloud';
             docRef.set({
               eventTitle: eventTitle.value,
               items: items.value.length ? items.value : window.DEFAULT_CAMPING_ITEMS || [],
@@ -438,13 +487,10 @@ createApp({
             });
           }
         }, (err) => {
-          console.error('Firestore 即時監聽錯誤:', err);
-          syncStatus.value = 'local';
+          console.warn('Firestore 監聽失敗:', err.message);
         });
-
       } catch (err) {
-        console.warn('Firebase 初始化失敗，使用本機模式:', err);
-        syncStatus.value = 'local';
+        console.warn('Firestore fallback 失敗:', err);
       }
     }
 
@@ -455,14 +501,21 @@ createApp({
       localStorage.setItem('camp_items_cache', JSON.stringify(items.value));
       localStorage.setItem('camp_event_title', eventTitle.value);
 
-      if (syncStatus.value === 'cloud' && firestoreDb) {
-        firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC_ID).set({
-          eventTitle: eventTitle.value,
-          items: items.value,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }).catch(err => {
-          console.error('雲端儲存失敗:', err);
-        });
+      if (syncStatus.value === 'cloud') {
+        if (rtdbRef) {
+          rtdbRef.set({
+            eventTitle: eventTitle.value,
+            items: items.value,
+            updatedAt: Date.now()
+          }).catch(err => console.error('Realtime DB 儲存失敗:', err));
+        }
+        if (firestoreDb) {
+          firestoreDb.collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC_ID).set({
+            eventTitle: eventTitle.value,
+            items: items.value,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }).catch(err => console.error('Firestore 儲存失敗:', err));
+        }
       }
     }
 
