@@ -41,9 +41,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- Leaflet Map (免金鑰互動地圖精準選點) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Google Maps JavaScript API (使用 Google 正版官方地圖互動選點) -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB9oe8wfbeYEwBdaU8eG9zuF4XcmXweMxQ&language=zh-TW&region=TW"></script>
 
   <style>
     body {
@@ -1122,8 +1121,8 @@
           <div class="flex items-center gap-1.5">
             <span class="text-xl">🗺️</span>
             <div>
-              <h3 class="text-sm sm:text-base font-bold text-stone-800">在線上地圖點選精準位置</h3>
-              <p class="text-[11px] text-stone-400">移動地圖或直接點擊，大頭針鎖定精確經緯度</p>
+              <h3 class="text-sm sm:text-base font-bold text-stone-800">Google 地圖精準點選位置</h3>
+              <p class="text-[11px] text-stone-400">點擊地圖任意處放圖釘，或直接拖曳紅色標記</p>
             </div>
           </div>
           <button @click="closeMapPicker" class="text-stone-400 hover:text-stone-600 p-1">
@@ -1131,48 +1130,69 @@
           </button>
         </div>
 
-        <!-- 搜尋列 -->
+        <!-- 搜尋列與 Google 輔助按鈕 -->
         <div class="flex gap-1.5 my-2.5">
           <input 
             v-model.trim="mapSearchKeyword" 
-            @keyup.enter="searchMapLocation" 
+            @keyup.enter="searchGoogleMapLocation" 
             type="text" 
-            placeholder="搜尋地點 (例：虎尾科技大學、武陵農場)..." 
+            placeholder="搜尋地標 (例：虎尾科技大學、武陵農場)..." 
             class="flex-1 border border-stone-300 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
           <button 
             type="button" 
-            @click="searchMapLocation" 
-            class="px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs transition flex items-center gap-1">
+            @click="searchGoogleMapLocation" 
+            class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex items-center gap-1 shadow-xs">
             <i class="ph ph-magnifying-glass"></i>
             <span>搜尋</span>
           </button>
           <button 
             type="button" 
             @click="useCurrentLocationInPicker" 
-            class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs transition border border-emerald-300 flex items-center gap-1"
+            class="px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-xs transition border border-stone-200 flex items-center gap-1"
             title="定位到我現在的位置">
             <i class="ph ph-crosshair"></i>
             <span class="hidden sm:inline">GPS</span>
           </button>
         </div>
 
-        <!-- 地圖容器 -->
+        <!-- 外部 Google 地圖支援工具列 -->
+        <div class="flex items-center justify-between bg-stone-50 p-2 rounded-xl border border-stone-200 mb-2 text-xs">
+          <span class="text-[11px] text-stone-500">也可在 Google Maps 複製網址：</span>
+          <div class="flex items-center gap-1.5">
+            <button 
+              type="button" 
+              @click="openExternalGoogleMaps" 
+              class="px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 border border-stone-200 text-stone-700 text-[11px] font-semibold flex items-center gap-1 transition">
+              <i class="ph ph-arrow-square-out text-emerald-600"></i>
+              <span>開啟 Google Maps 挑選</span>
+            </button>
+            <button 
+              type="button" 
+              @click="pasteFromClipboard" 
+              class="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold flex items-center gap-1 transition shadow-2xs">
+              <i class="ph ph-clipboard-text"></i>
+              <span>貼上網址</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Google 地圖容器 -->
         <div class="w-full h-64 sm:h-80 rounded-xl overflow-hidden border border-stone-200 relative bg-stone-100">
-          <div id="pickerMap" class="w-full h-full"></div>
+          <div id="googlePickerMap" class="w-full h-full"></div>
           <!-- 浮動提示 -->
           <div class="absolute bottom-2 left-2 bg-black/60 text-white px-2 py-1 rounded text-[10px] pointer-events-none z-[500] backdrop-blur-xs">
-            💡 點選地圖任意位置，或拖曳紅色標記以微調
+            💡 Google 地圖：點選任何位置放圖釘，或拖曳圖釘
           </div>
         </div>
 
         <!-- 選取資訊預覽 -->
-        <div class="bg-stone-50 p-2.5 rounded-xl border border-stone-200 mt-2.5 text-xs">
+        <div class="bg-stone-50 p-2.5 rounded-xl border border-stone-200 mt-2 text-xs">
           <div class="flex items-center justify-between text-stone-500 mb-0.5">
             <span class="font-semibold text-stone-700">📍 目前選取位置：</span>
             <span class="font-mono text-[11px] text-stone-500">{{ pickedCoords.lat.toFixed(5) }}, {{ pickedCoords.lng.toFixed(5) }}</span>
           </div>
           <div class="font-bold text-emerald-900 truncate">
-            {{ pickedAddressName || '正在選取或點擊地圖中...' }}
+            {{ pickedAddressName || '正在選取或點擊 Google 地圖中...' }}
           </div>
         </div>
 
@@ -1590,9 +1610,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_12"></script>
-  <script src="./config.js?v=20261012_12"></script>
+  <script src="./default-items.js?v=20261012_13"></script>
+  <script src="./config.js?v=20261012_13"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_12"></script>
+  <script src="./app.js?v=20261012_13"></script>
 </body>
 </html>
