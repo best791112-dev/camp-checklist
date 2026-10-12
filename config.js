@@ -8,7 +8,7 @@
  */
 window.APP_CONFIG = {
   // LINE LIFF ID (選填，若有填入則在 LINE 內部會自動讀取頭像與名字)
-  LIFF_ID: "",
+  LIFF_ID: "2011980881-P0EUvNYQ",
 
   // 預設活動名稱
   DEFAULT_EVENT_TITLE: "🌲 歡樂露營出遊裝備與食材備忘錄",
