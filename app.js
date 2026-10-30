@@ -62,9 +62,9 @@ createApp({
             title: "Day 1 - 採買與營地紮營",
             date: "2026-10-24",
             stops: [
-              { id: "stop_1_1", name: "集合出發點 (台北交流道)", depTime: "08:30", travelMin: 60, stayMin: 15, note: "集合完畢準時出發", mapQuery: "台北交流道" },
-              { id: "stop_1_2", name: "好市多採買食材 (新竹店)", depTime: "", travelMin: 50, stayMin: 90, note: "採買牛肉、海鮮與冰塊酒水", mapQuery: "好市多 新竹店" },
-              { id: "stop_1_3", name: "抵達營地 (尖石之美露營區)", depTime: "", travelMin: 0, stayMin: 0, note: "搭帳篷、下午茶時光", mapQuery: "尖石之美露營區" }
+              { id: "stop_1_1", name: "集合出發點 (台北交流道)", depTime: "08:30", travelMin: 55, travelKm: 72.5, stayMin: 15, note: "集合完畢準時出發", mapQuery: "https://www.google.com/maps/search/?api=1&query=25.075100,121.511300", lat: 25.0751, lng: 121.5113 },
+              { id: "stop_1_2", name: "好市多採買食材 (新竹店)", depTime: "", travelMin: 48, travelKm: 34.2, stayMin: 90, note: "採買牛肉、海鮮與冰塊酒水", mapQuery: "https://www.google.com/maps/search/?api=1&query=24.791800,121.015600", lat: 24.7918, lng: 121.0156 },
+              { id: "stop_1_3", name: "抵達營地 (尖石之美露營區)", depTime: "", travelMin: 0, travelKm: 0, stayMin: 0, note: "搭帳篷、下午茶時光", mapQuery: "https://www.google.com/maps/search/?api=1&query=24.715600,121.239200", lat: 24.7156, lng: 121.2392 }
             ]
           },
           {
@@ -72,8 +72,8 @@ createApp({
             title: "Day 2 - 拔營與內灣老街",
             date: "2026-10-25",
             stops: [
-              { id: "stop_2_1", name: "營地早晨與撤帳拔營", depTime: "11:00", travelMin: 30, stayMin: 0, note: "11:00前退場", mapQuery: "尖石之美露營區" },
-              { id: "stop_2_2", name: "內灣老街小吃午餐", depTime: "", travelMin: 70, stayMin: 120, note: "吃野薑花粽買伴手禮", mapQuery: "內灣老街" }
+              { id: "stop_2_1", name: "營地早晨與撤帳拔營", depTime: "11:00", travelMin: 20, travelKm: 9.8, stayMin: 0, note: "11:00前退場", mapQuery: "https://www.google.com/maps/search/?api=1&query=24.715600,121.239200", lat: 24.7156, lng: 121.2392 },
+              { id: "stop_2_2", name: "內灣老街小吃午餐", depTime: "", travelMin: 0, travelKm: 0, stayMin: 120, note: "吃野薑花粽買伴手禮", mapQuery: "https://www.google.com/maps/search/?api=1&query=24.705162,121.182275", lat: 24.705162, lng: 121.182275 }
             ]
           }
         ],
@@ -341,6 +341,55 @@ createApp({
       } catch (e) {}
     }
 
+    // 自動記憶當前畫面分頁與正在編輯的彈窗草稿 (防止手機切換至外部 Google App 再跳回來時畫面重置消失)
+    function saveUiSessionState() {
+      try {
+        const state = {
+          mainView: mainView.value,
+          currentDayIndex: currentDayIndex.value,
+          showStopModal: showStopModal.value,
+          editingStopIndex: editingStopIndex.value,
+          formStop: formStop.value,
+          showMapPickerModal: showMapPickerModal.value,
+          mapPickerTarget: mapPickerTarget.value,
+          pickedCoords: pickedCoords.value,
+          pickedAddressName: pickedAddressName.value,
+          mapSearchKeyword: mapSearchKeyword.value,
+          showSettingsModal: showSettingsModal.value,
+          updatedAt: Date.now()
+        };
+        sessionStorage.setItem('camp_ui_session_state', JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function restoreUiSessionState() {
+      try {
+        const raw = sessionStorage.getItem('camp_ui_session_state');
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (state && (Date.now() - (state.updatedAt || 0) < 30 * 60 * 1000)) {
+          if (state.mainView) mainView.value = state.mainView;
+          if (typeof state.currentDayIndex === 'number') currentDayIndex.value = state.currentDayIndex;
+          if (state.formStop) formStop.value = { ...formStop.value, ...state.formStop };
+          if (typeof state.editingStopIndex === 'number') editingStopIndex.value = state.editingStopIndex;
+          if (state.showStopModal) showStopModal.value = true;
+          if (state.showSettingsModal) showSettingsModal.value = true;
+          if (state.pickedCoords) pickedCoords.value = state.pickedCoords;
+          if (state.pickedAddressName) pickedAddressName.value = state.pickedAddressName;
+          if (state.mapSearchKeyword) mapSearchKeyword.value = state.mapSearchKeyword;
+          if (state.mapPickerTarget) mapPickerTarget.value = state.mapPickerTarget;
+          if (state.showMapPickerModal) {
+            showMapPickerModal.value = true;
+            Vue.nextTick(() => {
+              setTimeout(() => {
+                initOrUpdateGoogleMap(pickedCoords.value.lat, pickedCoords.value.lng);
+              }, 220);
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
     onMounted(async () => {
       loadFavoritesFromStorage();
       loadCarCheckFromStorage();
@@ -362,6 +411,21 @@ createApp({
       } catch (e) {}
 
       updateBrowserUrlForCurrentTrip();
+      restoreUiSessionState();
+
+      watch(
+        [mainView, currentDayIndex, showStopModal, editingStopIndex, formStop, showMapPickerModal, pickedCoords, pickedAddressName, showSettingsModal],
+        () => saveUiSessionState(),
+        { deep: true }
+      );
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          saveUiSessionState();
+        } else if (document.visibilityState === 'visible' && showMapPickerModal.value && leafletMapInstance) {
+          setTimeout(() => leafletMapInstance.invalidateSize(), 150);
+        }
+      });
 
       await initFirebaseIfConfigured();
       await initLiffIfConfigured();
@@ -809,8 +873,14 @@ createApp({
     });
 
     // ----------------------------------------------------
-    // 行程時間自動推算演算法
+    // 行程時間自動推算與真實道路車程自動計算 (OSRM + ArcGIS)
     // ----------------------------------------------------
+    const isCalculatingRoute = ref(false);
+    const routeCalcStatusText = ref('');
+    const draggingStopIndex = ref(-1);
+    const dragOverStopIndex = ref(-1);
+    let touchDragDayIndex = -1;
+
     function addMinutesToTime(timeStr, minutesToAdd) {
       if (!timeStr || !timeStr.includes(':')) return '';
       const [h, m] = timeStr.split(':').map(Number);
@@ -828,28 +898,358 @@ createApp({
       for (let i = 0; i < dayStops.length; i++) {
         const stop = dayStops[i];
         if (i === 0) {
+          const arr = stop.depTime || "08:30";
+          const dep = Number(stop.stayMin) > 0 ? addMinutesToTime(arr, Number(stop.stayMin)) : arr;
+          currentDep = dep;
           result.push({
             ...stop,
-            arrivalTime: stop.depTime || "08:30",
-            departureTime: stop.depTime || "08:30"
+            arrivalTime: arr,
+            departureTime: dep,
+            fromPrevTravelMin: 0,
+            fromPrevTravelKm: 0
           });
         } else {
           const prevStop = dayStops[i - 1];
-          const arrival = addMinutesToTime(currentDep, prevStop.travelMin || 0);
-          const departure = addMinutesToTime(arrival, stop.stayMin || 0);
+          const fromPrevMin = Number(prevStop.travelMin) || 0;
+          const fromPrevKm = Number(prevStop.travelKm) || 0;
+          const arrival = addMinutesToTime(currentDep, fromPrevMin);
+          const departure = addMinutesToTime(arrival, Number(stop.stayMin) || 0);
           currentDep = departure;
           result.push({
             ...stop,
             arrivalTime: arrival,
-            departureTime: departure
+            departureTime: departure,
+            fromPrevTravelMin: fromPrevMin,
+            fromPrevTravelKm: fromPrevKm
           });
         }
       }
       return result;
     }
 
+    // 從字串或 Google Maps 網址提取座標
+    function extractCoordsFromString(str) {
+      if (!str || typeof str !== 'string') return null;
+      // 1. 檢查 !3d24.xxx!4d121.xxx 格式
+      const bangMatch = str.match(/!3d([-+]?\d+\.\d+)!4d([-+]?\d+\.\d+)/);
+      if (bangMatch) {
+        return { lat: parseFloat(bangMatch[1]), lng: parseFloat(bangMatch[2]) };
+      }
+      // 2. 檢查 @24.xxx,121.xxx 或 query=24.xxx,121.xxx 或純座標
+      const coordMatch = str.match(/([-+]?[12]\d\.\d{3,})[,\s]+([-+]?1[12]\d\.\d{3,})/);
+      if (coordMatch) {
+        return { lat: parseFloat(coordMatch[1]), lng: parseFloat(coordMatch[2]) };
+      }
+      return null;
+    }
+
+    // 清理地點關鍵字以利地理編碼搜尋
+    function cleanSearchPlaceKeyword(rawName) {
+      if (!rawName) return '';
+      // 若有括號如 "好市多採買食材 (新竹店)" 或 "集合出發點 (台北交流道)"，優先組合或提取有效字詞
+      const parenMatch = rawName.match(/\(([^)]+)\)|（([^）]+)）/);
+      const inside = parenMatch ? (parenMatch[1] || parenMatch[2]) : '';
+      const outside = rawName.replace(/\([^)]*\)|（[^）]*）/g, '')
+        .replace(/集合出發點|抵達營地|採買食材|早晨與撤帳拔營|小吃午餐|出發點|抵達/g, '')
+        .trim();
+      if (inside && outside) return `${outside} ${inside}`.trim();
+      return inside || outside || rawName.trim();
+    }
+
+    // 透過 ArcGIS + Nominatim 查詢台灣地點精確經緯度 (免 API Key)
+    async function geocodePlaceInTaiwan(keyword) {
+      const q = cleanSearchPlaceKeyword(keyword);
+      if (!q) return null;
+      try {
+        const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=${encodeURIComponent(q)}&countryCode=TWN&maxLocations=3&outFields=PlaceName,Place_addr&f=json`;
+        const res = await fetch(arcUrl);
+        const data = await res.json();
+        if (data && data.candidates && data.candidates.length > 0) {
+          const best = data.candidates[0];
+          return {
+            lat: Number(best.location.y),
+            lng: Number(best.location.x),
+            name: best.attributes?.PlaceName || best.address || q,
+            address: best.attributes?.Place_addr || best.address || ''
+          };
+        }
+      } catch (e) {}
+
+      try {
+        const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=tw&limit=1&accept-language=zh-TW`;
+        const res = await fetch(nomUrl);
+        const data = await res.json();
+        if (data && data.length > 0) {
+          return {
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon),
+            name: q,
+            address: data[0].display_name || ''
+          };
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    // 確保單一 stop 具備 (lat, lng)
+    async function resolveStopCoords(stop) {
+      if (!stop) return null;
+      if (stop.lat && stop.lng && !isNaN(Number(stop.lat)) && !isNaN(Number(stop.lng))) {
+        return { lat: Number(stop.lat), lng: Number(stop.lng) };
+      }
+      const fromUrl = extractCoordsFromString(stop.mapQuery);
+      if (fromUrl) {
+        stop.lat = fromUrl.lat;
+        stop.lng = fromUrl.lng;
+        return fromUrl;
+      }
+      const queryTarget = (stop.mapQuery && !stop.mapQuery.startsWith('http')) ? stop.mapQuery : stop.name;
+      const geo = await geocodePlaceInTaiwan(queryTarget);
+      if (geo) {
+        stop.lat = Number(geo.lat.toFixed(6));
+        stop.lng = Number(geo.lng.toFixed(6));
+        if (!stop.mapQuery) {
+          stop.mapQuery = `https://www.google.com/maps/search/?api=1&query=${stop.lat},${stop.lng}`;
+        }
+        return { lat: stop.lat, lng: stop.lng };
+      }
+      return null;
+    }
+
+    // Haversine 球面直線距離備援計算
+    function calcHaversineKm(lat1, lng1, lat2, lng2) {
+      const toRad = d => (d * Math.PI) / 180;
+      const R = 6371;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // 計算兩座標點之間的真實開車時間與距離 (OSRM 導航引擎 + Haversine 備援)
+    async function calculateDrivingRoute(coordsA, coordsB) {
+      if (!coordsA || !coordsB) return null;
+      const straightKm = calcHaversineKm(coordsA.lat, coordsA.lng, coordsB.lat, coordsB.lng);
+      if (straightKm < 0.08) {
+        return { minutes: 1, km: 0.1 };
+      }
+      try {
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsA.lng},${coordsA.lat};${coordsB.lng},${coordsB.lat}?overview=false`;
+        const res = await fetch(osrmUrl);
+        const data = await res.json();
+        if (data && data.routes && data.routes.length > 0) {
+          const r = data.routes[0];
+          const minutes = Math.max(1, Math.round(r.duration / 60));
+          const km = Math.round((r.distance / 1000) * 10) / 10;
+          return { minutes, km };
+        }
+      } catch (e) {}
+
+      // 備援估算：道路曲折係數 1.4，平均車速 45 km/h
+      const estKm = Math.round(straightKm * 1.4 * 10) / 10;
+      const estMin = Math.max(3, Math.round((estKm / 45) * 60));
+      return { minutes: estMin, km: estKm };
+    }
+
+    // 全自動重算指定天數所有行程站點之間的車程時間與抵達時間
+    async function recalculateDayRoutes(dayIndex = currentDayIndex.value) {
+      if (!currentTrip.value || !currentTrip.value.tripDays[dayIndex]) return;
+      const day = currentTrip.value.tripDays[dayIndex];
+      const stops = day.stops || [];
+      if (stops.length === 0) return;
+
+      // 確保第一站擁有出發時間
+      if (!stops[0].depTime) {
+        const anyDep = stops.find(s => s.depTime)?.depTime || "08:30";
+        stops[0].depTime = anyDep;
+      }
+
+      isCalculatingRoute.value = true;
+      routeCalcStatusText.value = '🚗 正在自動計算各站定位與真實開車時間...';
+
+      try {
+        // 1. 解析每一站的經緯度
+        for (let i = 0; i < stops.length; i++) {
+          await resolveStopCoords(stops[i]);
+        }
+
+        // 2. 計算相鄰兩站的真實行車時間
+        for (let i = 0; i < stops.length; i++) {
+          if (i < stops.length - 1) {
+            const cA = (stops[i].lat && stops[i].lng) ? { lat: stops[i].lat, lng: stops[i].lng } : null;
+            const cB = (stops[i + 1].lat && stops[i + 1].lng) ? { lat: stops[i + 1].lat, lng: stops[i + 1].lng } : null;
+            if (cA && cB) {
+              const route = await calculateDrivingRoute(cA, cB);
+              if (route) {
+                stops[i].travelMin = route.minutes;
+                stops[i].travelKm = route.km;
+              }
+            }
+          } else {
+            stops[i].travelMin = 0;
+            stops[i].travelKm = 0;
+          }
+        }
+        persistData();
+      } finally {
+        isCalculatingRoute.value = false;
+        routeCalcStatusText.value = '';
+      }
+    }
+
+    // 在「新增/編輯行程」彈窗內，當輸入地點或選好地圖時即時預估車程
+    const formStopAutoRouteHint = ref('');
+    async function autoEstimateFormStopRoute() {
+      if (!currentTrip.value) return;
+      const day = currentTrip.value.tripDays[currentDayIndex.value];
+      if (!day) return;
+      const stops = day.stops || [];
+
+      formStopAutoRouteHint.value = '🔄 正在定位並自動計算車程...';
+      const coords = await resolveStopCoords(formStop.value);
+      if (!coords) {
+        formStopAutoRouteHint.value = '💡 請點選「地圖選點」標記位置以自動計算精準車程';
+        return;
+      }
+
+      const idx = editingStopIndex.value >= 0 ? editingStopIndex.value : stops.length;
+      const prevStop = idx > 0 ? stops[idx - 1] : null;
+      const nextStop = (editingStopIndex.value >= 0 && idx < stops.length - 1) ? stops[idx + 1] : null;
+
+      const messages = [];
+      if (prevStop) {
+        const prevCoords = await resolveStopCoords(prevStop);
+        if (prevCoords) {
+          const rPrev = await calculateDrivingRoute(prevCoords, coords);
+          if (rPrev) {
+            messages.push(`從上一站「${prevStop.name}」開過來約 ${rPrev.minutes} 分鐘 (${rPrev.km} km)`);
+          }
+        }
+      }
+      if (nextStop) {
+        const nextCoords = await resolveStopCoords(nextStop);
+        if (nextCoords) {
+          const rNext = await calculateDrivingRoute(coords, nextCoords);
+          if (rNext) {
+            formStop.value.travelMin = rNext.minutes;
+            formStop.value.travelKm = rNext.km;
+            messages.push(`開往下一站「${nextStop.name}」約 ${rNext.minutes} 分鐘 (${rNext.km} km)`);
+          }
+        }
+      } else {
+        formStop.value.travelMin = 0;
+        formStop.value.travelKm = 0;
+      }
+
+      formStopAutoRouteHint.value = messages.length > 0
+        ? `✅ 已自動算好車程：${messages.join('；')}`
+        : `✅ 已鎖定座標 (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})，儲存後將自動連算全天車程！`;
+    }
+
+    // ----------------------------------------------------
+    // 行程拉動更換順序 (支援滑鼠拖拉 Drag & Drop + 手機觸控手把拉動 + 上下移動按鈕)
+    // ----------------------------------------------------
+    function swapOrMoveStops(dayIndex, fromIndex, toIndex) {
+      if (!currentTrip.value) return;
+      const day = currentTrip.value.tripDays[dayIndex];
+      if (!day || !day.stops) return;
+      if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= day.stops.length || toIndex >= day.stops.length) return;
+
+      // 記住原本第一站的出發時間，確保拉動更換首站後出發時間不會遺失
+      const originalFirstDepTime = day.stops[0]?.depTime || "08:30";
+
+      const moved = day.stops.splice(fromIndex, 1)[0];
+      day.stops.splice(toIndex, 0, moved);
+
+      if (!day.stops[0].depTime) {
+        day.stops[0].depTime = originalFirstDepTime;
+      }
+    }
+
+    async function moveStopOrder(dayIndex, stopIndex, delta) {
+      const day = currentTrip.value?.tripDays?.[dayIndex];
+      if (!day) return;
+      const targetIndex = stopIndex + delta;
+      if (targetIndex < 0 || targetIndex >= day.stops.length) return;
+      swapOrMoveStops(dayIndex, stopIndex, targetIndex);
+      await recalculateDayRoutes(dayIndex);
+    }
+
+    function onStopDragStart(dayIndex, stopIndex, event) {
+      draggingStopIndex.value = stopIndex;
+      dragOverStopIndex.value = stopIndex;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(stopIndex));
+      }
+    }
+
+    function onStopDragOver(dayIndex, stopIndex, event) {
+      event.preventDefault();
+      if (draggingStopIndex.value < 0) return;
+      if (dragOverStopIndex.value !== stopIndex) {
+        swapOrMoveStops(dayIndex, draggingStopIndex.value, stopIndex);
+        draggingStopIndex.value = stopIndex;
+        dragOverStopIndex.value = stopIndex;
+      }
+    }
+
+    async function onStopDrop(dayIndex, stopIndex, event) {
+      event.preventDefault();
+      draggingStopIndex.value = -1;
+      dragOverStopIndex.value = -1;
+      await recalculateDayRoutes(dayIndex);
+    }
+
+    async function onStopDragEnd(dayIndex) {
+      if (draggingStopIndex.value >= 0) {
+        draggingStopIndex.value = -1;
+        dragOverStopIndex.value = -1;
+        await recalculateDayRoutes(dayIndex);
+      }
+    }
+
+    // 手機觸控按住拖曳手把 (☰) 上下拉動排序
+    function onStopTouchStart(dayIndex, stopIndex, event) {
+      touchDragDayIndex = dayIndex;
+      draggingStopIndex.value = stopIndex;
+      dragOverStopIndex.value = stopIndex;
+    }
+
+    function onStopTouchMove(dayIndex, event) {
+      if (draggingStopIndex.value < 0 || touchDragDayIndex !== dayIndex) return;
+      if (event.cancelable) event.preventDefault();
+      const touch = event.touches[0];
+      if (!touch) return;
+
+      const cards = document.querySelectorAll(`[data-day-stop-card="${dayIndex}"]`);
+      for (let i = 0; i < cards.length; i++) {
+        const rect = cards[i].getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+          if (i !== draggingStopIndex.value) {
+            swapOrMoveStops(dayIndex, draggingStopIndex.value, i);
+            draggingStopIndex.value = i;
+            dragOverStopIndex.value = i;
+          }
+          break;
+        }
+      }
+    }
+
+    async function onStopTouchEnd(dayIndex) {
+      if (draggingStopIndex.value >= 0) {
+        draggingStopIndex.value = -1;
+        dragOverStopIndex.value = -1;
+        touchDragDayIndex = -1;
+        await recalculateDayRoutes(dayIndex);
+      }
+    }
+
     function openMapNavigation(queryOrUrl) {
       if (!queryOrUrl) return;
+      saveUiSessionState();
       if (queryOrUrl.startsWith('http')) {
         window.open(queryOrUrl, '_blank');
       } else {
@@ -859,13 +1259,15 @@ createApp({
     }
 
     // ----------------------------------------------------
-    // Google 地圖官方互動選點器 (Google Maps API + 圖釘拖曳)
-    // ----------------------------------------------------
-    // Google 正版官方圖資選點器 (免 API Key，永不報錯)
+    // Google 正版官方圖資選點器 (100% 網頁內建搜尋與點選，免跳外部 App)
     // ----------------------------------------------------
     const showMapPickerModal = ref(false);
-    const mapPickerTarget = ref('stop'); // 'stop' or 'campsite'
+    const mapPickerTarget = ref('stop'); // 'stop' | 'campsite' | 'stop_direct'
+    const directPreviewDayIndex = ref(0);
+    const directPreviewStopIndex = ref(-1);
     const mapSearchKeyword = ref('');
+    const mapSearchResults = ref([]);
+    const isSearchingMap = ref(false);
     const pickedCoords = ref({ lat: 23.7028, lng: 120.4312 }); // 預設台灣中心
     const pickedAddressName = ref('');
     const currentMapLayerType = ref('roadmap'); // 'roadmap' or 'satellite'
@@ -874,30 +1276,62 @@ createApp({
     let googleRoadmapLayer = null;
     let googleSatelliteLayer = null;
 
-    function openMapPicker(target = 'stop') {
-      mapPickerTarget.value = target;
-      mapSearchKeyword.value = target === 'stop' ? (formStop.value.name || '') : (campSiteInfo.value.name || '');
-      
-      let currentQuery = target === 'stop' ? formStop.value.mapQuery : campSiteInfo.value.mapUrl;
-      let initLat = 23.7028;
-      let initLng = 120.4312;
+    // 在行程卡片點選「📍 定位」時，直接在網頁內開啟 Google 地圖查看或微調位置（絕不跳出到外部 App）
+    function openStopMapPreview(dayIndex, stopIndex) {
+      const stop = currentTrip.value?.tripDays?.[dayIndex]?.stops?.[stopIndex];
+      if (!stop) return;
+      directPreviewDayIndex.value = dayIndex;
+      directPreviewStopIndex.value = stopIndex;
+      mapPickerTarget.value = 'stop_direct';
+      mapSearchKeyword.value = stop.name || '';
+      mapSearchResults.value = [];
 
-      // 檢查是否已包含經緯度
-      const match = currentQuery && currentQuery.match(/([-+]?\d+\.\d+)[,\s]+([-+]?\d+\.\d+)/);
-      if (match) {
-        initLat = parseFloat(match[1]);
-        initLng = parseFloat(match[2]);
+      let initLat = Number(stop.lat) || 24.705162;
+      let initLng = Number(stop.lng) || 121.182275;
+      const fromUrl = extractCoordsFromString(stop.mapQuery);
+      if (fromUrl) {
+        initLat = fromUrl.lat;
+        initLng = fromUrl.lng;
       }
 
       pickedCoords.value = { lat: initLat, lng: initLng };
-      pickedAddressName.value = target === 'stop' ? (formStop.value.name || '已選取座標') : (campSiteInfo.value.name || '已選取座標');
+      pickedAddressName.value = stop.name || '已選取位置';
+      showMapPickerModal.value = true;
+
+      Vue.nextTick(() => {
+        setTimeout(() => {
+          initOrUpdateGoogleMap(initLat, initLng);
+          if (!stop.lat && !fromUrl && mapSearchKeyword.value) {
+            searchGoogleMapLocation();
+          }
+        }, 180);
+      });
+    }
+
+    function openMapPicker(target = 'stop') {
+      mapPickerTarget.value = target;
+      mapSearchKeyword.value = target === 'stop' ? (formStop.value.name || '') : (campSiteInfo.value.name || '');
+      mapSearchResults.value = [];
+
+      let currentQuery = target === 'stop' ? formStop.value.mapQuery : campSiteInfo.value.mapUrl;
+      let initLat = (target === 'stop' && formStop.value.lat) ? Number(formStop.value.lat) : 24.705162;
+      let initLng = (target === 'stop' && formStop.value.lng) ? Number(formStop.value.lng) : 121.182275;
+
+      const match = extractCoordsFromString(currentQuery);
+      if (match) {
+        initLat = match.lat;
+        initLng = match.lng;
+      }
+
+      pickedCoords.value = { lat: initLat, lng: initLng };
+      pickedAddressName.value = target === 'stop' ? (formStop.value.name || '請點選地圖或搜尋地標') : (campSiteInfo.value.name || '請點選地圖或搜尋地標');
 
       showMapPickerModal.value = true;
 
       Vue.nextTick(() => {
         setTimeout(() => {
           initOrUpdateGoogleMap(initLat, initLng);
-          if (mapSearchKeyword.value && !match) {
+          if (mapSearchKeyword.value && !match && !(target === 'stop' && formStop.value.lat)) {
             searchGoogleMapLocation();
           }
         }, 180);
@@ -958,7 +1392,7 @@ createApp({
         });
 
         // 拖曳圖釘放開
-        leafletMarkerInstance.on('dragend', (e) => {
+        leafletMarkerInstance.on('dragend', () => {
           const pos = leafletMarkerInstance.getLatLng();
           pickedCoords.value = { lat: pos.lat, lng: pos.lng };
           reverseGeocodeNominatim(pos.lat, pos.lng);
@@ -1001,32 +1435,97 @@ createApp({
         });
     }
 
-    function searchGoogleMapLocation() {
-      if (!mapSearchKeyword.value.trim()) return;
-      pickedAddressName.value = `正在搜尋「${mapSearchKeyword.value.trim()}」...`;
-      fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(mapSearchKeyword.value.trim())}&countrycodes=tw&limit=1&accept-language=zh-TW`)
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.length > 0) {
-            const item = data[0];
+    // 升級版台灣地標與地址雙引擎搜尋 (ArcGIS + Nominatim)，直接在網頁內列出候選點，免跳出 App
+    async function searchGoogleMapLocation() {
+      const kw = mapSearchKeyword.value.trim();
+      if (!kw) return;
+
+      // 若使用者直接貼上含座標的文字或網址
+      const directCoords = extractCoordsFromString(kw);
+      if (directCoords) {
+        selectMapSearchCandidate({
+          name: `座標定位 (${directCoords.lat.toFixed(5)}, ${directCoords.lng.toFixed(5)})`,
+          address: kw,
+          lat: directCoords.lat,
+          lng: directCoords.lng
+        });
+        return;
+      }
+
+      isSearchingMap.value = true;
+      mapSearchResults.value = [];
+      pickedAddressName.value = `🔍 正在搜尋「${kw}」...`;
+
+      const candidates = [];
+      const cleanKw = cleanSearchPlaceKeyword(kw);
+
+      try {
+        const arcUrl = `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?SingleLine=${encodeURIComponent(cleanKw)}&countryCode=TWN&maxLocations=5&outFields=PlaceName,Place_addr&f=json`;
+        const res = await fetch(arcUrl);
+        const data = await res.json();
+        if (data && Array.isArray(data.candidates)) {
+          for (const c of data.candidates) {
+            const lat = Number(c.location?.y);
+            const lng = Number(c.location?.x);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              candidates.push({
+                name: c.attributes?.PlaceName || c.address || cleanKw,
+                address: c.attributes?.Place_addr || c.address || '',
+                lat,
+                lng
+              });
+            }
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanKw)}&countrycodes=tw&limit=4&accept-language=zh-TW`;
+        const res = await fetch(nomUrl);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          for (const item of data) {
             const lat = parseFloat(item.lat);
             const lng = parseFloat(item.lon);
-            pickedCoords.value = { lat, lng };
-            pickedAddressName.value = item.display_name.replace(/台灣|Taiwan|, /g, ' ').trim();
-            if (leafletMapInstance && leafletMarkerInstance) {
-              leafletMapInstance.setView([lat, lng], 16);
-              leafletMarkerInstance.setLatLng([lat, lng]);
+            const isDup = candidates.some(existing => calcHaversineKm(existing.lat, existing.lng, lat, lng) < 0.15);
+            if (!isDup) {
+              const parts = (item.display_name || '').split(',').map(s => s.trim());
+              candidates.push({
+                name: parts[0] || cleanKw,
+                address: item.display_name.replace(/台灣|Taiwan|, /g, ' ').trim(),
+                lat,
+                lng
+              });
             }
-          } else {
-            pickedAddressName.value = `未搜尋到精確位置，請點擊地圖任意處放圖釘，或點上方「開啟 Google Maps 挑選」`;
           }
-        })
-        .catch(() => {
-          pickedAddressName.value = `請直接點擊地圖任意處放置圖釘`;
-        });
+        }
+      } catch (e) {}
+
+      isSearchingMap.value = false;
+      mapSearchResults.value = candidates.slice(0, 5);
+
+      if (candidates.length > 0) {
+        selectMapSearchCandidate(candidates[0], false);
+      } else {
+        pickedAddressName.value = `找不到「${kw}」的精確地標，請直接在地圖上點選或拖曳紅色圖釘！`;
+      }
+    }
+
+    function selectMapSearchCandidate(cand, clearList = true) {
+      if (!cand) return;
+      pickedCoords.value = { lat: cand.lat, lng: cand.lng };
+      pickedAddressName.value = cand.address ? `${cand.name} (${cand.address})` : cand.name;
+      if (leafletMapInstance && leafletMarkerInstance) {
+        leafletMapInstance.setView([cand.lat, cand.lng], 16);
+        leafletMarkerInstance.setLatLng([cand.lat, cand.lng]);
+      }
+      if (clearList) {
+        mapSearchResults.value = [];
+      }
     }
 
     function openExternalGoogleMaps() {
+      saveUiSessionState();
       const q = mapSearchKeyword.value.trim() || (mapPickerTarget.value === 'stop' ? formStop.value.name : campSiteInfo.value.name) || '台灣';
       const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
       window.open(url, '_blank');
@@ -1035,29 +1534,54 @@ createApp({
     async function pasteFromClipboard() {
       try {
         const text = await navigator.clipboard.readText();
-        if (text && (text.includes('http') || text.includes('maps') || text.includes('goo.gl'))) {
-          if (mapPickerTarget.value === 'stop') {
-            formStop.value.mapQuery = text.trim();
-          } else {
-            campSiteInfo.value.mapUrl = text.trim();
-          }
-          showMapPickerModal.value = false;
-          alert('✅ 已成功自剪貼簿貼上 Google Maps 網址！');
+        if (text && (text.includes('http') || text.includes('maps') || text.includes('goo.gl') || extractCoordsFromString(text))) {
+          applyPastedMapString(text.trim());
         } else {
-          const manual = prompt('請在此貼上您的 Google Maps 分享網址：', text || '');
+          const manual = prompt('請在此貼上您的 Google Maps 分享網址或座標：', text || '');
           if (manual && manual.trim()) {
-            if (mapPickerTarget.value === 'stop') formStop.value.mapQuery = manual.trim();
-            else campSiteInfo.value.mapUrl = manual.trim();
-            showMapPickerModal.value = false;
+            applyPastedMapString(manual.trim());
           }
         }
       } catch (err) {
-        const manual = prompt('請在此貼上您的 Google Maps 分享網址：');
+        const manual = prompt('請在此貼上您的 Google Maps 分享網址或座標：');
         if (manual && manual.trim()) {
-          if (mapPickerTarget.value === 'stop') formStop.value.mapQuery = manual.trim();
-          else campSiteInfo.value.mapUrl = manual.trim();
-          showMapPickerModal.value = false;
+          applyPastedMapString(manual.trim());
         }
+      }
+    }
+
+    async function applyPastedMapString(rawStr) {
+      const coords = extractCoordsFromString(rawStr);
+      if (coords) {
+        pickedCoords.value = { lat: coords.lat, lng: coords.lng };
+        if (leafletMapInstance && leafletMarkerInstance) {
+          leafletMapInstance.setView([coords.lat, coords.lng], 16);
+          leafletMarkerInstance.setLatLng([coords.lat, coords.lng]);
+        }
+        reverseGeocodeNominatim(coords.lat, coords.lng);
+      }
+      if (mapPickerTarget.value === 'stop') {
+        formStop.value.mapQuery = rawStr;
+        if (coords) {
+          formStop.value.lat = coords.lat;
+          formStop.value.lng = coords.lng;
+        }
+        showMapPickerModal.value = false;
+        await autoEstimateFormStopRoute();
+      } else if (mapPickerTarget.value === 'stop_direct') {
+        const stop = currentTrip.value?.tripDays?.[directPreviewDayIndex.value]?.stops?.[directPreviewStopIndex.value];
+        if (stop) {
+          stop.mapQuery = rawStr;
+          if (coords) {
+            stop.lat = coords.lat;
+            stop.lng = coords.lng;
+          }
+          showMapPickerModal.value = false;
+          await recalculateDayRoutes(directPreviewDayIndex.value);
+        }
+      } else {
+        campSiteInfo.value.mapUrl = rawStr;
+        showMapPickerModal.value = false;
       }
     }
 
@@ -1075,7 +1599,7 @@ createApp({
           leafletMarkerInstance.setLatLng([lat, lng]);
         }
         reverseGeocodeNominatim(lat, lng);
-      }, (err) => {
+      }, () => {
         alert('無法取得目前位置，請確認定位權限是否開啟。');
       });
     }
@@ -1085,43 +1609,57 @@ createApp({
         alert('您的裝置不支援 GPS 定位');
         return;
       }
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const latNum = Number(pos.coords.latitude.toFixed(6));
+        const lngNum = Number(pos.coords.longitude.toFixed(6));
+        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`;
         if (target === 'stop') {
           formStop.value.mapQuery = mapUrl;
-          if (!formStop.value.name) formStop.value.name = '目前打卡位置';
+          formStop.value.lat = latNum;
+          formStop.value.lng = lngNum;
+          if (!formStop.value.name) formStop.value.name = '目前 GPS 位置';
+          await autoEstimateFormStopRoute();
         } else {
           campSiteInfo.value.mapUrl = mapUrl;
         }
-        alert(`✅ 已成功帶入目前 GPS 精準座標：${lat}, ${lng}！`);
-      }, (err) => {
+      }, () => {
         alert('無法取得目前位置，請確認定位權限是否開啟。');
       });
     }
 
-    function confirmPickedLocation() {
-      const lat = pickedCoords.value.lat.toFixed(6);
-      const lng = pickedCoords.value.lng.toFixed(6);
-      const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    async function confirmPickedLocation() {
+      const latNum = Number(pickedCoords.value.lat.toFixed(6));
+      const lngNum = Number(pickedCoords.value.lng.toFixed(6));
+      const googleMapUrl = `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`;
 
       if (mapPickerTarget.value === 'stop') {
         formStop.value.mapQuery = googleMapUrl;
+        formStop.value.lat = latNum;
+        formStop.value.lng = lngNum;
         if (!formStop.value.name.trim() && pickedAddressName.value) {
-          formStop.value.name = pickedAddressName.value;
+          formStop.value.name = pickedAddressName.value.split(' (')[0];
+        }
+        showMapPickerModal.value = false;
+        await autoEstimateFormStopRoute();
+      } else if (mapPickerTarget.value === 'stop_direct') {
+        const stop = currentTrip.value?.tripDays?.[directPreviewDayIndex.value]?.stops?.[directPreviewStopIndex.value];
+        if (stop) {
+          stop.mapQuery = googleMapUrl;
+          stop.lat = latNum;
+          stop.lng = lngNum;
+          showMapPickerModal.value = false;
+          await recalculateDayRoutes(directPreviewDayIndex.value);
         }
       } else {
         campSiteInfo.value.mapUrl = googleMapUrl;
         if (!campSiteInfo.value.name.trim() && pickedAddressName.value) {
-          campSiteInfo.value.name = pickedAddressName.value;
+          campSiteInfo.value.name = pickedAddressName.value.split(' (')[0];
         }
         if (!campSiteInfo.value.address && pickedAddressName.value) {
           campSiteInfo.value.address = pickedAddressName.value;
         }
+        showMapPickerModal.value = false;
       }
-
-      showMapPickerModal.value = false;
     }
 
     function closeMapPicker() {
@@ -1136,9 +1674,10 @@ createApp({
         title: `Day ${nextDayNum} - 精彩行程`,
         date: "",
         stops: [
-          { id: `stop_${nextDayNum}_1`, name: "出發", depTime: "09:00", travelMin: 30, stayMin: 0, note: "", mapQuery: "" }
+          { id: `stop_${nextDayNum}_1`, name: campSiteInfo.value?.name || "營地出發", depTime: "09:00", travelMin: 0, travelKm: 0, stayMin: 0, note: "", mapQuery: campSiteInfo.value?.mapUrl || "" }
         ]
       });
+      currentDayIndex.value = currentTrip.value.tripDays.length - 1;
       persistData();
     }
 
@@ -1146,6 +1685,9 @@ createApp({
       if (!currentTrip.value || currentTrip.value.tripDays.length <= 1) return;
       if (confirm(`確定刪除第 ${dayIndex + 1} 天行程？`)) {
         currentTrip.value.tripDays.splice(dayIndex, 1);
+        if (currentDayIndex.value >= currentTrip.value.tripDays.length) {
+          currentDayIndex.value = currentTrip.value.tripDays.length - 1;
+        }
         persistData();
       }
     }
@@ -1153,19 +1695,32 @@ createApp({
     function openAddStopModal(dayIndex) {
       currentDayIndex.value = dayIndex;
       editingStopIndex.value = -1;
-      formStop.value = { name: "", depTime: "", travelMin: 30, stayMin: 60, note: "", mapQuery: "" };
+      const dayStops = currentTrip.value?.tripDays?.[dayIndex]?.stops || [];
+      formStopAutoRouteHint.value = '';
+      formStop.value = {
+        name: "",
+        depTime: dayStops.length === 0 ? "08:30" : "",
+        travelMin: 0,
+        travelKm: 0,
+        stayMin: 60,
+        note: "",
+        mapQuery: "",
+        lat: null,
+        lng: null
+      };
       showStopModal.value = true;
     }
 
     function openEditStopModal(dayIndex, stopIndex) {
       currentDayIndex.value = dayIndex;
       editingStopIndex.value = stopIndex;
+      formStopAutoRouteHint.value = '';
       const target = currentTrip.value.tripDays[dayIndex].stops[stopIndex];
       formStop.value = { ...target };
       showStopModal.value = true;
     }
 
-    function saveStop() {
+    async function saveStop() {
       if (!formStop.value.name.trim() || !currentTrip.value) return;
       const day = currentTrip.value.tripDays[currentDayIndex.value];
       if (editingStopIndex.value >= 0) {
@@ -1173,15 +1728,18 @@ createApp({
       } else {
         day.stops.push({ id: 'stop_' + Date.now(), ...formStop.value });
       }
-      persistData();
       showStopModal.value = false;
+      persistData();
+      // 儲存後全自動定位並計算全天各站車程與抵達時間
+      await recalculateDayRoutes(currentDayIndex.value);
     }
 
-    function deleteStop(dayIndex, stopIndex) {
+    async function deleteStop(dayIndex, stopIndex) {
       if (!currentTrip.value) return;
       if (confirm('確定刪除此行程地點？')) {
         currentTrip.value.tripDays[dayIndex].stops.splice(stopIndex, 1);
         persistData();
+        await recalculateDayRoutes(dayIndex);
       }
     }
 
@@ -1885,15 +2443,34 @@ createApp({
       tripDays,
       getCalculatedStops,
       openMapNavigation,
+      isCalculatingRoute,
+      routeCalcStatusText,
+      recalculateDayRoutes,
+      formStopAutoRouteHint,
+      autoEstimateFormStopRoute,
+      draggingStopIndex,
+      dragOverStopIndex,
+      moveStopOrder,
+      onStopDragStart,
+      onStopDragOver,
+      onStopDrop,
+      onStopDragEnd,
+      onStopTouchStart,
+      onStopTouchMove,
+      onStopTouchEnd,
       // 互動地圖選點器 (Google Maps 官方圖資選點)
       showMapPickerModal,
       mapPickerTarget,
       mapSearchKeyword,
+      mapSearchResults,
+      isSearchingMap,
+      selectMapSearchCandidate,
       pickedCoords,
       pickedAddressName,
       currentMapLayerType,
       switchGoogleMapLayer,
       openMapPicker,
+      openStopMapPreview,
       searchGoogleMapLocation,
       openExternalGoogleMaps,
       pasteFromClipboard,
