@@ -313,14 +313,56 @@ createApp({
     const presetLibrary = ref(window.PRESET_ITEM_LIBRARY || []);
 
     // ----------------------------------------------------
-    // 生命週期
+    // 生命週期與專屬場次網址解析
     // ----------------------------------------------------
+    function getTripShareUrl(tripId = currentTripId.value) {
+      const base = window.location.origin + window.location.pathname;
+      return `${base}?trip=${encodeURIComponent(tripId)}`;
+    }
+
+    async function copyTripShareUrl(tripId = currentTripId.value) {
+      const target = allTrips.value.find(x => x.id === tripId) || currentTrip.value;
+      const url = getTripShareUrl(tripId);
+      const title = target?.title || '露營活動';
+      try {
+        await navigator.clipboard.writeText(url);
+        alert(`📋 已複製「${title}」專屬分享網址：\n\n${url}\n\n👉 傳送到此活動的專屬 LINE 群組，團員點擊後將直接進入本場次！`);
+      } catch (e) {
+        prompt(`請複製以下「${title}」專屬分享網址：`, url);
+      }
+    }
+
+    function updateBrowserUrlForCurrentTrip() {
+      try {
+        if (!currentTripId.value) return;
+        const url = new URL(window.location.href);
+        url.searchParams.set('trip', currentTripId.value);
+        window.history.replaceState({}, '', url.toString());
+      } catch (e) {}
+    }
+
     onMounted(async () => {
       loadFavoritesFromStorage();
       loadCarCheckFromStorage();
       loadTripsFromLocal();
       loadVerifiedAdminsFromStorage();
       initUserIdentity();
+
+      // 優先檢查網址列是否有指定場次參數 (?trip=xxx)
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryTripId = urlParams.get('trip');
+        if (queryTripId) {
+          const matched = allTrips.value.find(x => x.id === queryTripId);
+          if (matched) {
+            currentTripId.value = queryTripId;
+            localStorage.setItem('camp_current_trip_id', queryTripId);
+          }
+        }
+      } catch (e) {}
+
+      updateBrowserUrlForCurrentTrip();
+
       await initFirebaseIfConfigured();
       await initLiffIfConfigured();
 
@@ -351,6 +393,7 @@ createApp({
       }
       currentTripId.value = tripId;
       localStorage.setItem('camp_current_trip_id', tripId);
+      updateBrowserUrlForCurrentTrip();
       showTripSwitchModal.value = false;
 
       // 自動同步本活動之認領身分
@@ -1438,9 +1481,20 @@ createApp({
               if (data && data.allTrips && Array.isArray(data.allTrips) && data.allTrips.length > 0) {
                 syncStatus.value = 'cloud';
                 allTrips.value = data.allTrips;
-                if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
-                  currentTripId.value = data.currentTripId;
+
+                // 優先保留網址參數指定之場次
+                const urlParams = new URLSearchParams(window.location.search);
+                const queryTripId = urlParams.get('trip');
+                if (queryTripId && allTrips.value.some(x => x.id === queryTripId)) {
+                  currentTripId.value = queryTripId;
+                } else if (!allTrips.value.some(x => x.id === currentTripId.value)) {
+                  if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
+                    currentTripId.value = data.currentTripId;
+                  } else if (allTrips.value.length > 0) {
+                    currentTripId.value = allTrips.value[0].id;
+                  }
                 }
+                updateBrowserUrlForCurrentTrip();
                 localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
               } else {
                 syncStatus.value = 'cloud';
@@ -1476,9 +1530,20 @@ createApp({
             const data = doc.data();
             if (data && data.allTrips && Array.isArray(data.allTrips) && data.allTrips.length > 0) {
               allTrips.value = data.allTrips;
-              if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
-                currentTripId.value = data.currentTripId;
+
+              // 優先保留網址參數指定之場次
+              const urlParams = new URLSearchParams(window.location.search);
+              const queryTripId = urlParams.get('trip');
+              if (queryTripId && allTrips.value.some(x => x.id === queryTripId)) {
+                currentTripId.value = queryTripId;
+              } else if (!allTrips.value.some(x => x.id === currentTripId.value)) {
+                if (data.currentTripId && allTrips.value.some(x => x.id === data.currentTripId)) {
+                  currentTripId.value = data.currentTripId;
+                } else if (allTrips.value.length > 0) {
+                  currentTripId.value = allTrips.value[0].id;
+                }
               }
+              updateBrowserUrlForCurrentTrip();
               localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
             }
           } else {
@@ -1709,7 +1774,7 @@ createApp({
       }
 
       text += `=========================\n`;
-      text += `🔗 線上協同認領與行程：\n${window.location.href.split('?')[0]}`;
+      text += `🔗 本場次專屬協同與行程：\n${getTripShareUrl(currentTripId.value)}`;
       return text;
     });
 
@@ -1892,7 +1957,10 @@ createApp({
       isPickerItemSelected,
       togglePickItem,
       addSelectedToCurrentList,
-      addAllFavoritesToCurrentList
+      addAllFavoritesToCurrentList,
+      // 專屬場次分享網址
+      getTripShareUrl,
+      copyTripShareUrl
     };
   }
 }).mount('#app');
