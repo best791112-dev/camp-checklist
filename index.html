@@ -801,7 +801,14 @@
               </div>
             </div>
             
-            <div class="flex items-center gap-1 flex-shrink-0">
+            <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button 
+                @click.stop="copyTripShareUrl(trip.id)" 
+                class="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold flex items-center gap-1 transition border border-emerald-200" 
+                title="複製此活動專屬分享網址">
+                <i class="ph ph-share-network text-xs"></i>
+                <span>分享</span>
+              </button>
               <button 
                 v-if="allTrips.length > 1" 
                 @click.stop="deleteCurrentTrip(trip.id)" 
@@ -1539,7 +1546,26 @@
           <h3 class="text-base font-bold text-stone-800">📋 清單摘要與分享</h3>
           <button @click="showExportModal = false" class="text-stone-400 hover:text-stone-600"><i class="ph ph-x text-lg"></i></button>
         </div>
-        <textarea readonly :value="generatedSummaryText" class="w-full flex-1 border rounded-xl p-3 text-xs font-mono bg-stone-50 leading-relaxed mb-3 min-h-[220px]"></textarea>
+
+        <!-- 本場次專屬分享網址提示卡片 -->
+        <div class="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <div class="text-[11px] font-bold text-emerald-900 flex items-center gap-1">
+              <span>🔗 本場次專屬分享網址</span>
+            </div>
+            <div class="text-[10px] text-emerald-700 truncate font-mono mt-0.5">
+              {{ getTripShareUrl() }}
+            </div>
+          </div>
+          <button 
+            @click="copyTripShareUrl()" 
+            class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex-shrink-0 flex items-center gap-1 shadow-xs">
+            <i class="ph ph-copy"></i>
+            <span>複製網址</span>
+          </button>
+        </div>
+
+        <textarea readonly :value="generatedSummaryText" class="w-full flex-1 border rounded-xl p-3 text-xs font-mono bg-stone-50 leading-relaxed mb-3 min-h-[200px]"></textarea>
         <div class="flex gap-2">
           <button @click="copySummaryText" class="flex-1 py-2.5 rounded-xl border text-stone-700 font-bold text-xs flex items-center justify-center gap-1.5">
             <i class="ph ph-copy"></i>
@@ -1567,6 +1593,24 @@
         </div>
 
         <div class="space-y-3.5 overflow-y-auto flex-1 pr-1 custom-scrollbar">
+          <!-- 本活動專屬分享網址 -->
+          <div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="text-[11px] font-bold text-emerald-900 flex items-center gap-1">
+                <i class="ph ph-share-network"></i> 本活動專屬分享網址：
+              </div>
+              <div class="text-[10px] text-emerald-700 truncate font-mono mt-0.5">
+                {{ getTripShareUrl() }}
+              </div>
+            </div>
+            <button 
+              @click="copyTripShareUrl()" 
+              class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex-shrink-0 flex items-center gap-1 shadow-xs">
+              <i class="ph ph-copy"></i>
+              <span>複製網址</span>
+            </button>
+          </div>
+
           <!-- 活動名稱與日期 -->
           <div>
             <label class="block font-semibold text-stone-700 mb-1">活動主題名稱 *</label>
@@ -1752,9 +1796,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261012_18"></script>
-  <script src="./config.js?v=20261012_18"></script>
+  <script src="./default-items.js?v=20261030_02"></script>
+  <script src="./config.js?v=20261030_02"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261012_18"></script>
+  <script src="./app.js?v=20261030_02"></script>
 </body>
 </html>
