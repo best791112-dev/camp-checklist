@@ -427,6 +427,18 @@ createApp({
         }
       });
 
+      watch(
+        [mainView, currentDayIndex, currentTripId],
+        ([view, dIdx]) => {
+          if (view === 'trip') {
+            const stops = currentTrip.value?.tripDays?.[dIdx]?.stops || [];
+            if (stops.length > 1 && stops.some(s => !s.lat || !s.lng || s.travelKm === undefined)) {
+              recalculateDayRoutes(dIdx);
+            }
+          }
+        }
+      );
+
       await initFirebaseIfConfigured();
       await initLiffIfConfigured();
 
@@ -437,6 +449,14 @@ createApp({
           persistData();
         }
       }
+
+      // 若開啟時就在行程頁且有未計算實際車程的站點，自動計算
+      setTimeout(() => {
+        const stops = currentTrip.value?.tripDays?.[currentDayIndex.value]?.stops || [];
+        if (stops.length > 1 && stops.some(s => !s.lat || !s.lng || s.travelKm === undefined)) {
+          recalculateDayRoutes(currentDayIndex.value);
+        }
+      }, 600);
     });
 
     // ----------------------------------------------------
@@ -1003,7 +1023,24 @@ createApp({
         stop.lng = fromUrl.lng;
         return fromUrl;
       }
-      const queryTarget = (stop.mapQuery && !stop.mapQuery.startsWith('http')) ? stop.mapQuery : stop.name;
+
+      let queryTarget = (stop.mapQuery && !stop.mapQuery.startsWith('http')) ? stop.mapQuery : (stop.name || '');
+      // 智慧辨識：若站點名稱為「到達營區」、「抵達營地」、「營地出發」、「回營區」等泛稱，自動代入上方設定的營地名稱（如「達樣山林露營區」）
+      const strippedCamp = queryTarget.replace(/到達|抵達|集合|出發|早晨|撤帳|拔營|紮營|返回|回|點|\s+/g, '');
+      if (strippedCamp === '營區' || strippedCamp === '營地' || strippedCamp === '露營區' || strippedCamp === '') {
+        if (campSiteInfo.value) {
+          const campCoord = extractCoordsFromString(campSiteInfo.value.mapUrl || campSiteInfo.value.address);
+          if (campCoord) {
+            stop.lat = campCoord.lat;
+            stop.lng = campCoord.lng;
+            return campCoord;
+          }
+          if (campSiteInfo.value.name || campSiteInfo.value.address) {
+            queryTarget = campSiteInfo.value.address || campSiteInfo.value.name;
+          }
+        }
+      }
+
       const geo = await geocodePlaceInTaiwan(queryTarget);
       if (geo) {
         stop.lat = Number(geo.lat.toFixed(6));
