@@ -3,7 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>露營出遊神隊友 🏕️ 攜帶備忘與行程手冊</title>
+  <script>
+    // 自動破除瀏覽器與 LINE 頑固快取機制
+    window.APP_BUILD_VER = '20261030_04';
+    (function() {
+      try {
+        fetch('./index.html?_vercheck=' + Date.now(), { cache: 'no-store' })
+          .then(function(r) { return r.text(); })
+          .then(function(html) {
+            var m = html.match(/APP_BUILD_VER\s*=\s*'([^']+)'/);
+            if (m && m[1] && m[1] !== window.APP_BUILD_VER) {
+              var u = new URL(window.location.href);
+              u.searchParams.set('v', m[1]);
+              u.searchParams.set('_t', Date.now());
+              window.location.replace(u.toString());
+            }
+          }).catch(function() {});
+      } catch (e) {}
+    })();
+  </script>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -1910,9 +1932,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261030_03"></script>
-  <script src="./config.js?v=20261030_03"></script>
+  <script src="./default-items.js?v=20261030_04"></script>
+  <script src="./config.js?v=20261030_04"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261030_03"></script>
+  <script src="./app.js?v=20261030_04"></script>
 </body>
 </html>
