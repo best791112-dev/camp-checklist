@@ -576,10 +576,20 @@
 
         <!-- 當前天數行程時間軸 -->
         <div v-if="tripDays[currentDayIndex]" class="space-y-3">
-          <div class="flex items-center justify-between text-xs pb-2 border-b border-stone-100">
+          <div class="flex items-center justify-between gap-2 flex-wrap text-xs pb-2 border-b border-stone-100">
             <span class="font-bold text-stone-700">{{ tripDays[currentDayIndex].title }}</span>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 flex-wrap">
               <button 
+                type="button"
+                @click="recalculateDayRoutes(currentDayIndex)"
+                :disabled="isCalculatingRoute"
+                class="px-2 py-1 rounded-lg bg-amber-50 text-amber-800 font-semibold border border-amber-200 hover:bg-amber-100 flex items-center gap-1 transition disabled:opacity-50"
+                title="根據各站 Google 地圖位置自動計算開車時間">
+                <i :class="['ph ph-car', isCalculatingRoute ? 'animate-bounce' : '']"></i>
+                <span>{{ isCalculatingRoute ? '計算車程中...' : '自動算車程' }}</span>
+              </button>
+              <button 
+                type="button"
                 @click="openAddStopModal(currentDayIndex)"
                 class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1">
                 <i class="ph ph-plus"></i>
@@ -587,6 +597,7 @@
               </button>
               <button 
                 v-if="tripDays.length > 1"
+                type="button"
                 @click="removeTripDay(currentDayIndex)" 
                 class="text-stone-400 hover:text-red-500 p-1" 
                 title="刪除此天">
@@ -595,25 +606,88 @@
             </div>
           </div>
 
-          <!-- 自動推算的時間軸列表 -->
-          <div class="relative pl-6 space-y-4 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-stone-200">
+          <!-- 拖曳與自動算車程狀態提示 -->
+          <div v-if="routeCalcStatusText" class="text-xs px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-semibold flex items-center gap-1.5 animate-pulse">
+            <i class="ph ph-spinner animate-spin"></i>
+            <span>{{ routeCalcStatusText }}</span>
+          </div>
+          <div v-else class="text-[11px] text-stone-500 bg-stone-50 px-2.5 py-1.5 rounded-lg border border-stone-200/70 flex items-center justify-between gap-2">
+            <span>💡 按住左側 <strong class="text-stone-700">⠿ 手把</strong> 可上下拉動更換行程順序，車程與到達時間將自動重算！</span>
+          </div>
+
+          <!-- 自動推算的時間軸列表 (支援滑鼠拖曳 + 手機觸控手把拉動 + 上下箭頭) -->
+          <div class="relative pl-5 space-y-3 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-stone-200">
             <div 
               v-for="(stop, sIndex) in getCalculatedStops(tripDays[currentDayIndex].stops)" 
               :key="stop.id"
-              class="relative bg-stone-50 rounded-xl p-3 border border-stone-200/80">
+              :data-day-stop-card="currentDayIndex"
+              draggable="true"
+              @dragstart="onStopDragStart(currentDayIndex, sIndex, $event)"
+              @dragover="onStopDragOver(currentDayIndex, sIndex, $event)"
+              @drop="onStopDrop(currentDayIndex, sIndex, $event)"
+              @dragend="onStopDragEnd(currentDayIndex)"
+              :class="[
+                'relative rounded-xl p-2.5 sm:p-3 border transition select-none',
+                draggingStopIndex === sIndex
+                  ? 'bg-emerald-50/90 border-emerald-500 shadow-lg ring-2 ring-emerald-300 opacity-90 z-10'
+                  : 'bg-stone-50 border-stone-200/80 hover:border-emerald-300'
+              ]">
               
               <!-- 時間軸節點 -->
-              <span class="absolute -left-6 top-3.5 w-3 h-3 rounded-full bg-emerald-600 border-2 border-white"></span>
+              <span class="absolute -left-[19px] top-5 w-3 h-3 rounded-full bg-emerald-600 border-2 border-white"></span>
+
+              <!-- 站與站之間的自動計算車程橫幅 (第 2 站起顯示從上一站開過來的車程) -->
+              <div v-if="sIndex > 0" class="mb-2 pb-1.5 border-b border-stone-200/60 flex items-center justify-between text-[11px] text-emerald-800 font-semibold">
+                <span class="flex items-center gap-1">
+                  <i class="ph ph-car-profile text-emerald-600"></i>
+                  <span>從上一站車程：約 <strong>{{ stop.fromPrevTravelMin }} 分鐘</strong></span>
+                  <span v-if="stop.fromPrevTravelKm > 0" class="text-stone-500 font-normal">({{ stop.fromPrevTravelKm }} km)</span>
+                </span>
+                <span class="text-[10px] text-stone-400">自動計算</span>
+              </div>
 
               <div class="flex items-start justify-between gap-2">
+                <!-- 左側：拖曳手把 (支援觸控拉動與上下微調) -->
+                <div class="flex flex-col items-center justify-center gap-0.5 pt-0.5 pr-1 text-stone-400 border-r border-stone-200/70 flex-shrink-0">
+                  <button 
+                    type="button"
+                    v-if="sIndex > 0"
+                    @click.stop="moveStopOrder(currentDayIndex, sIndex, -1)"
+                    class="hover:text-emerald-600 p-0.5 leading-none"
+                    title="往上移動">
+                    <i class="ph ph-caret-up text-xs"></i>
+                  </button>
+                  <div 
+                    class="cursor-grab active:cursor-grabbing p-1 text-stone-500 hover:text-emerald-700 touch-none"
+                    @touchstart.stop="onStopTouchStart(currentDayIndex, sIndex, $event)"
+                    @touchmove.stop.prevent="onStopTouchMove(currentDayIndex, $event)"
+                    @touchend.stop="onStopTouchEnd(currentDayIndex)"
+                    title="按住上下拉動更換行程順序">
+                    <i class="ph ph-dots-six-vertical text-lg font-bold"></i>
+                  </div>
+                  <button 
+                    type="button"
+                    v-if="sIndex < tripDays[currentDayIndex].stops.length - 1"
+                    @click.stop="moveStopOrder(currentDayIndex, sIndex, 1)"
+                    class="hover:text-emerald-600 p-0.5 leading-none"
+                    title="往下移動">
+                    <i class="ph ph-caret-down text-xs"></i>
+                  </button>
+                </div>
+
+                <!-- 中間：站點資訊 -->
                 <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-xs font-bold text-stone-800">{{ stop.name }}</span>
-                    <!-- 到達與出發時間 -->
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-stone-200 text-stone-700">#{{ sIndex + 1 }}</span>
+                    <span class="text-xs sm:text-sm font-bold text-stone-800 break-words">{{ stop.name }}</span>
+                  </div>
+
+                  <!-- 到達與出發時間 -->
+                  <div class="mt-1 flex items-center gap-1.5 flex-wrap">
                     <span class="text-[11px] font-mono px-2 py-0.5 bg-white border border-stone-200 rounded text-stone-700 font-semibold">
-                      ⏰ {{ stop.arrivalTime }} 到達
+                      ⏰ {{ sIndex === 0 ? stop.arrivalTime + ' 出發' : stop.arrivalTime + ' 抵達' }}
                       <template v-if="stop.stayMin > 0">
-                        → {{ stop.departureTime }} 出發
+                        → {{ stop.departureTime }} 離開
                       </template>
                     </span>
                   </div>
@@ -622,28 +696,41 @@
                     {{ stop.note }}
                   </p>
 
-                  <!-- 停留與車程資訊 -->
-                  <div class="flex items-center gap-3 mt-1.5 text-[11px] text-stone-400">
+                  <!-- 停留與下站車程資訊 -->
+                  <div class="flex items-center gap-3 mt-1.5 text-[11px] text-stone-500 flex-wrap">
                     <span v-if="stop.stayMin > 0">⏳ 停留 {{ stop.stayMin }} 分鐘</span>
-                    <span v-if="stop.travelMin > 0">🚗 下站車程 {{ stop.travelMin }} 分鐘</span>
+                    <span v-if="sIndex < tripDays[currentDayIndex].stops.length - 1 && stop.travelMin > 0" class="text-emerald-700 font-medium">
+                      🚗 往下一站 {{ stop.travelMin }} 分鐘<template v-if="stop.travelKm > 0"> ({{ stop.travelKm }} km)</template>
+                    </span>
                   </div>
                 </div>
 
-                <!-- 動作按鈕 -->
+                <!-- 右側動作按鈕：網頁內定位預覽 (不跳出App)、外部導航、編輯、刪除 -->
                 <div class="flex items-center gap-1 flex-shrink-0">
                   <button 
-                    @click="openMapNavigation(stop.mapQuery || stop.name)"
-                    class="p-1.5 text-emerald-600 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition" 
-                    title="導航至此處">
-                    <i class="ph ph-map-pin text-base"></i>
+                    type="button"
+                    @click="openStopMapPreview(currentDayIndex, sIndex)"
+                    class="px-2 py-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition text-[11px] font-bold flex items-center gap-0.5" 
+                    title="在網頁內開啟地圖查看或微調定位（不會跳出至外部 App）">
+                    <i class="ph ph-map-pin text-sm"></i>
+                    <span>定位</span>
                   </button>
                   <button 
+                    type="button"
+                    @click="openMapNavigation(stop.mapQuery || stop.name)"
+                    class="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg hover:bg-stone-100 transition" 
+                    title="開啟外部 Google Maps 導航">
+                    <i class="ph ph-navigation-arrow text-sm"></i>
+                  </button>
+                  <button 
+                    type="button"
                     @click="openEditStopModal(currentDayIndex, sIndex)" 
                     class="p-1.5 text-stone-400 hover:text-stone-700 rounded-lg hover:bg-stone-100 transition" 
                     title="編輯">
                     <i class="ph ph-pencil-simple text-sm"></i>
                   </button>
                   <button 
+                    type="button"
                     @click="deleteStop(currentDayIndex, sIndex)" 
                     class="p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-stone-100 transition" 
                     title="刪除">
@@ -1139,13 +1226,28 @@
 
         <form @submit.prevent="saveStop" class="space-y-3">
           <div>
-            <label class="block font-semibold text-stone-600 mb-1">地點名稱 *</label>
-            <input v-model.trim="formStop.name" type="text" placeholder="例：內灣老街、好市多新竹店..." required class="w-full border rounded-xl px-3 py-2 text-xs">
+            <div class="flex items-center justify-between mb-1">
+              <label class="font-semibold text-stone-600">地點名稱 *</label>
+              <button 
+                type="button"
+                @click="openMapPicker('stop')"
+                class="text-emerald-700 hover:text-emerald-800 font-bold text-[11px] flex items-center gap-0.5">
+                <i class="ph ph-map-pin-line"></i>
+                <span>直接在網頁地圖搜尋/選點</span>
+              </button>
+            </div>
+            <input 
+              v-model.trim="formStop.name" 
+              @change="autoEstimateFormStopRoute"
+              type="text" 
+              placeholder="例：內灣老街、好市多新竹店..." 
+              required 
+              class="w-full border rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
           </div>
 
           <div class="grid grid-cols-3 gap-2">
             <div>
-              <label class="block font-semibold text-stone-600 mb-1">出發時間 (首站必填)</label>
+              <label class="block font-semibold text-stone-600 mb-1">出發時間 (首站)</label>
               <input v-model="formStop.depTime" type="time" class="w-full border rounded-xl px-2 py-1.5 text-xs">
             </div>
             <div>
@@ -1153,30 +1255,30 @@
               <input v-model.number="formStop.stayMin" type="number" min="0" step="5" class="w-full border rounded-xl px-2 py-1.5 text-xs">
             </div>
             <div>
-              <label class="block font-semibold text-stone-600 mb-1">下站車程 (分)</label>
-              <input v-model.number="formStop.travelMin" type="number" min="0" step="5" class="w-full border rounded-xl px-2 py-1.5 text-xs">
+              <label class="block font-semibold text-stone-600 mb-1">下站車程 (自動)</label>
+              <input v-model.number="formStop.travelMin" type="number" min="0" step="1" placeholder="自動計算" class="w-full border border-emerald-200 bg-emerald-50/40 rounded-xl px-2 py-1.5 text-xs font-bold text-emerald-900">
             </div>
           </div>
 
           <div>
             <div class="flex items-center justify-between mb-1">
-              <label class="font-semibold text-stone-700">Google 地圖定位 / 精確位置</label>
+              <label class="font-semibold text-stone-700">Google 地圖定位 (網頁內選點不跳出)</label>
               <!-- 快捷地圖選點按鈕組 -->
               <div class="flex items-center gap-1.5">
                 <button 
                   type="button" 
                   @click="openMapPicker('stop')" 
-                  class="px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] flex items-center gap-1 border border-emerald-300 transition">
+                  class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-xs transition">
                   <i class="ph ph-map-pin"></i>
-                  <span>地圖選點</span>
+                  <span>地圖選點 / 定位</span>
                 </button>
                 <button 
                   type="button" 
                   @click="useCurrentLocation('stop')" 
-                  class="px-2 py-0.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium text-[11px] flex items-center gap-1 transition"
+                  class="px-2 py-1 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-medium text-[11px] flex items-center gap-1 transition"
                   title="使用手機目前 GPS 座標">
                   <i class="ph ph-crosshair"></i>
-                  <span>目前位置</span>
+                  <span>GPS</span>
                 </button>
               </div>
             </div>
@@ -1184,30 +1286,33 @@
             <div class="relative">
               <input 
                 v-model.trim="formStop.mapQuery" 
+                @change="autoEstimateFormStopRoute"
                 type="text" 
-                placeholder="點上方「地圖選點」或貼上 Google Maps 網址" 
-                class="w-full border border-stone-300 rounded-xl px-3 py-2 pr-16 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                placeholder="點上方「地圖選點 / 定位」在網頁內直接選位置（儲存自動算車程）" 
+                class="w-full border border-stone-300 rounded-xl px-3 py-2 pr-20 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
               
-              <!-- 立即預覽驗證按鈕 -->
+              <!-- 在網頁內直接開啟地圖預覽按鈕（絕不跳去外部 Google Maps App） -->
               <button 
-                v-if="formStop.mapQuery || formStop.name" 
                 type="button" 
-                @click="openMapNavigation(formStop.mapQuery || formStop.name)" 
-                class="absolute right-1.5 top-1.5 px-2 py-1 bg-stone-100 hover:bg-emerald-100 text-stone-700 hover:text-emerald-800 rounded-lg text-[10px] font-bold transition flex items-center gap-0.5 border border-stone-200"
-                title="立即在 Google 地圖開啟確認位置是否正確">
-                <i class="ph ph-arrow-square-out"></i>
-                <span>預覽</span>
+                @click="openMapPicker('stop')" 
+                class="absolute right-1.5 top-1.5 px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-[10px] font-bold transition flex items-center gap-0.5 border border-emerald-200"
+                title="在網頁內地圖查看與調整圖釘位置（不會跳去外部 App）">
+                <i class="ph ph-map-trifold"></i>
+                <span>看地圖</span>
               </button>
             </div>
 
-            <!-- 精準度提示狀態 -->
-            <div class="mt-1 text-[11px]">
-              <div v-if="formStop.mapQuery?.startsWith('http')" class="text-emerald-700 flex items-center gap-1 font-semibold">
-                <i class="ph ph-check-circle-fill"></i>
-                <span>✅ 已鎖定專屬座標網址，導航直達精準點，絕不模糊搜尋！</span>
+            <!-- 自動計算車程與定位提示狀態 -->
+            <div class="mt-1.5 text-[11px]">
+              <div v-if="formStopAutoRouteHint" class="text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg font-semibold flex items-center gap-1">
+                <span>{{ formStopAutoRouteHint }}</span>
               </div>
-              <div v-else class="text-stone-400 flex items-center justify-between">
-                <span>💡 建議點選「地圖選點」直接在地圖上挑選，避免模糊搜尋出錯。</span>
+              <div v-else-if="formStop.lat && formStop.lng" class="text-emerald-700 flex items-center gap-1 font-semibold">
+                <i class="ph ph-check-circle-fill"></i>
+                <span>✅ 已鎖定精確座標 ({{ Number(formStop.lat).toFixed(4) }}, {{ Number(formStop.lng).toFixed(4) }})，儲存後自動計算各站車程！</span>
+              </div>
+              <div v-else class="text-stone-500 flex items-center justify-between">
+                <span>💡 輸入地點名稱或點「地圖選點 / 定位」，儲存時系統會自動計算站與站之間的開車時間！</span>
               </div>
             </div>
           </div>
@@ -1219,43 +1324,43 @@
 
           <div class="flex gap-2 pt-2">
             <button type="button" @click="showStopModal = false" class="flex-1 py-2 rounded-xl border text-stone-600 font-semibold">取消</button>
-            <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">儲存行程</button>
+            <button type="submit" class="flex-1 py-2 rounded-xl bg-emerald-600 text-white font-semibold">儲存並自動算車程</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- Modal 2B: 互動地圖精準選點器 (Leaflet) -->
+    <!-- Modal 2B: 互動地圖精準選點器 (100% 網頁內完成，免跳外部 App) -->
     <div v-if="showMapPickerModal" class="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm">
-      <div class="bg-white rounded-2xl max-w-lg w-full p-4 shadow-2xl flex flex-col max-h-[90vh]">
+      <div class="bg-white rounded-2xl max-w-lg w-full p-4 shadow-2xl flex flex-col max-h-[92vh]">
         <!-- 頂部標題與關閉 -->
-        <div class="flex items-center justify-between pb-2.5 border-b border-stone-100">
+        <div class="flex items-center justify-between pb-2 border-b border-stone-100">
           <div class="flex items-center gap-1.5">
             <span class="text-xl">🗺️</span>
             <div>
-              <h3 class="text-sm sm:text-base font-bold text-stone-800">Google 地圖精準點選位置</h3>
-              <p class="text-[11px] text-stone-400">點擊地圖任意處放圖釘，或直接拖曳紅色標記</p>
+              <h3 class="text-sm sm:text-base font-bold text-stone-800">Google 地圖網頁內精準定位</h3>
+              <p class="text-[11px] text-emerald-700 font-medium">直接在下方搜尋或點選地圖放紅色圖釘，免跳出至外部 App！</p>
             </div>
           </div>
-          <button @click="closeMapPicker" class="text-stone-400 hover:text-stone-600 p-1">
+          <button type="button" @click="closeMapPicker" class="text-stone-400 hover:text-stone-600 p-1">
             <i class="ph ph-x text-lg"></i>
           </button>
         </div>
 
-        <!-- 搜尋列與 Google 輔助按鈕 -->
-        <div class="flex gap-1.5 my-2.5">
+        <!-- 搜尋列與 GPS 按鈕 -->
+        <div class="flex gap-1.5 mt-2.5 mb-1.5">
           <input 
             v-model.trim="mapSearchKeyword" 
             @keyup.enter="searchGoogleMapLocation" 
             type="text" 
-            placeholder="搜尋地標 (例：虎尾科技大學、武陵農場)..." 
+            placeholder="輸入台灣景點、餐廳、營區或地址 (例：內灣老街)..." 
             class="flex-1 border border-stone-300 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none">
           <button 
             type="button" 
             @click="searchGoogleMapLocation" 
             class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex items-center gap-1 shadow-xs">
             <i class="ph ph-magnifying-glass"></i>
-            <span>搜尋</span>
+            <span>{{ isSearchingMap ? '搜尋中' : '搜尋' }}</span>
           </button>
           <button 
             type="button" 
@@ -1267,17 +1372,27 @@
           </button>
         </div>
 
-        <!-- 外部 Google 地圖支援工具列 -->
-        <div class="flex items-center justify-between bg-stone-50 p-2 rounded-xl border border-stone-200 mb-2 text-xs">
-          <span class="text-[11px] text-stone-500">也可在 Google Maps 複製網址：</span>
+        <!-- 搜尋候選結果列表 (點擊直接在網頁內定位，完全不必跳外部 App) -->
+        <div v-if="mapSearchResults.length > 0" class="mb-2 max-h-28 overflow-y-auto bg-emerald-50/70 border border-emerald-200 rounded-xl p-1.5 space-y-1 custom-scrollbar">
+          <div class="text-[10px] font-bold text-emerald-800 px-1">📍 點選以下符合地點直接定位：</div>
+          <button
+            v-for="(cand, cIdx) in mapSearchResults"
+            :key="cIdx"
+            type="button"
+            @click="selectMapSearchCandidate(cand, true)"
+            class="w-full text-left px-2 py-1 rounded-lg bg-white hover:bg-emerald-100 border border-emerald-100 text-xs flex items-center justify-between gap-2 transition">
+            <div class="min-w-0 flex-1">
+              <span class="font-bold text-stone-800">{{ cand.name }}</span>
+              <span v-if="cand.address && cand.address !== cand.name" class="text-[10px] text-stone-500 ml-1 truncate">{{ cand.address }}</span>
+            </div>
+            <span class="text-[10px] text-emerald-700 font-bold flex-shrink-0">選取</span>
+          </button>
+        </div>
+
+        <!-- 貼上網址輔助列 -->
+        <div class="flex items-center justify-between bg-stone-50 px-2.5 py-1.5 rounded-xl border border-stone-200 mb-2 text-xs">
+          <span class="text-[11px] text-stone-500">若已有複製 Google Maps 網址：</span>
           <div class="flex items-center gap-1.5">
-            <button 
-              type="button" 
-              @click="openExternalGoogleMaps" 
-              class="px-2 py-1 rounded-lg bg-white hover:bg-emerald-50 border border-stone-200 text-stone-700 text-[11px] font-semibold flex items-center gap-1 transition">
-              <i class="ph ph-arrow-square-out text-emerald-600"></i>
-              <span>開啟 Google Maps 挑選</span>
-            </button>
             <button 
               type="button" 
               @click="pasteFromClipboard" 
@@ -1760,14 +1875,13 @@
             <div class="flex items-center justify-between mb-1">
               <label class="font-semibold text-stone-700">營地地址 / 定位網址</label>
               <button 
-                v-if="campSiteInfo.mapUrl || campSiteInfo.address || campSiteInfo.name" 
                 type="button" 
-                @click="openMapNavigation(campSiteInfo.mapUrl || campSiteInfo.address || campSiteInfo.name)" 
+                @click="openMapPicker('campsite')" 
                 class="text-emerald-700 hover:underline text-[11px] font-semibold flex items-center gap-0.5">
-                <i class="ph ph-arrow-square-out"></i> 預覽位置
+                <i class="ph ph-map-trifold"></i> 網頁內看地圖定位
               </button>
             </div>
-            <input v-model="campSiteInfo.address" type="text" placeholder="例：新竹縣尖石鄉... 或貼上 Google Maps 網址" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
+            <input v-model="campSiteInfo.address" type="text" placeholder="例：新竹縣尖石鄉... 或點上方地圖選點" class="w-full border rounded-lg px-2.5 py-1.5 text-xs">
           </div>
 
           <!-- 危險區域操作 -->
@@ -1796,9 +1910,9 @@
   </div>
 
   <!-- 載入自訂設定與範本 (加入版本號破除快取) -->
-  <script src="./default-items.js?v=20261030_02"></script>
-  <script src="./config.js?v=20261030_02"></script>
+  <script src="./default-items.js?v=20261030_03"></script>
+  <script src="./config.js?v=20261030_03"></script>
   <!-- 核心邏輯 -->
-  <script src="./app.js?v=20261030_02"></script>
+  <script src="./app.js?v=20261030_03"></script>
 </body>
 </html>
