@@ -910,6 +910,16 @@ createApp({
       return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
     }
 
+    // 將分鐘數轉為 Google 導航時間格式（例：3 小時 30 分 / 45 分鐘）
+    function formatGoogleDuration(minutes) {
+      const m = parseInt(minutes || 0, 10);
+      if (m <= 0) return '0 分鐘';
+      if (m < 60) return `${m} 分鐘`;
+      const hrs = Math.floor(m / 60);
+      const mins = m % 60;
+      return mins > 0 ? `${hrs} 小時 ${mins} 分 (${m} 分鐘)` : `${hrs} 小時 (${m} 分鐘)`;
+    }
+
     function getCalculatedStops(dayStops) {
       if (!dayStops || dayStops.length === 0) return [];
       const result = [];
@@ -926,12 +936,14 @@ createApp({
             arrivalTime: arr,
             departureTime: dep,
             fromPrevTravelMin: 0,
-            fromPrevTravelKm: 0
+            fromPrevTravelKm: 0,
+            fromPrevRouteVia: ''
           });
         } else {
           const prevStop = dayStops[i - 1];
           const fromPrevMin = Number(prevStop.travelMin) || 0;
           const fromPrevKm = Number(prevStop.travelKm) || 0;
+          const fromPrevVia = prevStop.routeVia || '';
           const arrival = addMinutesToTime(currentDep, fromPrevMin);
           const departure = addMinutesToTime(arrival, Number(stop.stayMin) || 0);
           currentDep = departure;
@@ -940,7 +952,8 @@ createApp({
             arrivalTime: arrival,
             departureTime: departure,
             fromPrevTravelMin: fromPrevMin,
-            fromPrevTravelKm: fromPrevKm
+            fromPrevTravelKm: fromPrevKm,
+            fromPrevRouteVia: fromPrevVia
           });
         }
       }
@@ -976,7 +989,7 @@ createApp({
       return inside || outside || rawName.trim();
     }
 
-    // 透過 ArcGIS + Nominatim 查詢台灣地點精確經緯度 (免 API Key)
+    // 透過地理編碼查詢台灣地點精確經緯度 (免 API Key)
     async function geocodePlaceInTaiwan(keyword) {
       const q = cleanSearchPlaceKeyword(keyword);
       if (!q) return null;
@@ -1064,32 +1077,96 @@ createApp({
       return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    // 計算兩座標點之間的真實開車時間與距離 (OSRM 導航引擎 + Haversine 備援)
+    // 計算兩座標點之間的 Google 導航行車時間、公里數與行經主要道路
     async function calculateDrivingRoute(coordsA, coordsB) {
       if (!coordsA || !coordsB) return null;
       const straightKm = calcHaversineKm(coordsA.lat, coordsA.lng, coordsB.lat, coordsB.lng);
       if (straightKm < 0.08) {
-        return { minutes: 1, km: 0.1 };
+        return { minutes: 1, km: 0.1, routeVia: '' };
       }
       try {
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsA.lng},${coordsA.lat};${coordsB.lng},${coordsB.lat}?overview=false`;
-        const res = await fetch(osrmUrl);
+        const navUrl = `https://router.project-osrm.org/route/v1/driving/${coordsA.lng},${coordsA.lat};${coordsB.lng},${coordsB.lat}?steps=true&alternatives=true&overview=false`;
+        const res = await fetch(navUrl);
         const data = await res.json();
         if (data && data.routes && data.routes.length > 0) {
           const r = data.routes[0];
-          const minutes = Math.max(1, Math.round(r.duration / 60));
           const km = Math.round((r.distance / 1000) * 10) / 10;
-          return { minutes, km };
+
+          // 依台灣國道/快速道路 Google 導航標準時速校準時間並提取主要行經道路
+          let calibratedSec = 0;
+          const roadDistMap = new Map();
+          const steps = r.legs?.[0]?.steps || [];
+          if (steps.length > 0) {
+            for (const st of steps) {
+              const dist = Number(st.distance) || 0;
+              const dur = Number(st.duration) || 0;
+              const name = (st.name || '').trim();
+              const ref = (st.ref || '').trim();
+              const fullRoad = `${name} ${ref}`;
+
+              const isFreeway = /高速公路|國道|中山高|福爾摩沙|蔣渭水|水沙連/.test(fullRoad);
+              const isExpressway = /快速公路|快速道路|西濱|台61|台62|台64|台65|台66|台68|台72|台74|台76|台78|台82|台84|台86|台88/.test(fullRoad);
+
+              if (isFreeway && dist > 300) {
+                // Google 導航台灣國道標準推算車速 (約 104 km/h)
+                calibratedSec += dist / (104 * 1000 / 3600);
+              } else if (isExpressway && dist > 300) {
+                // Google 導航台灣快速道路標準推算車速 (約 85 km/h)
+                calibratedSec += dist / (85 * 1000 / 3600);
+              } else {
+                calibratedSec += dur * 0.92;
+              }
+
+              if (name && dist >= 1200 && !/無名|巷|弄/.test(name)) {
+                roadDistMap.set(name, (roadDistMap.get(name) || 0) + dist);
+              }
+            }
+          } else {
+            calibratedSec = r.duration * 0.88;
+          }
+
+          // 挑選距離最長的前 2~3 條主要幹道（保持行經順序）
+          const majorRoads = [];
+          for (const [rName, rDist] of roadDistMap.entries()) {
+            if (rDist >= 2500 || majorRoads.length === 0) {
+              if (!majorRoads.includes(rName)) majorRoads.push(rName);
+            }
+            if (majorRoads.length >= 3) break;
+          }
+
+          const minutes = Math.max(1, Math.round(calibratedSec / 60));
+          return {
+            minutes,
+            km,
+            routeVia: majorRoads.join(' → ')
+          };
         }
       } catch (e) {}
 
-      // 備援估算：道路曲折係數 1.4，平均車速 45 km/h
-      const estKm = Math.round(straightKm * 1.4 * 10) / 10;
-      const estMin = Math.max(3, Math.round((estKm / 45) * 60));
-      return { minutes: estMin, km: estKm };
+      // 備援估算：道路曲折係數 1.35，平均車速 55 km/h
+      const estKm = Math.round(straightKm * 1.35 * 10) / 10;
+      const estMin = Math.max(3, Math.round((estKm / 55) * 60));
+      return { minutes: estMin, km: estKm, routeVia: '' };
     }
 
-    // 全自動重算指定天數所有行程站點之間的車程時間與抵達時間
+    // 開啟兩站點之間的 Google 導航路線 (帶入起點與終點座標/地名)
+    function openGoogleRouteDirection(dayIndex, stopIndex) {
+      const stops = currentTrip.value?.tripDays?.[dayIndex]?.stops || [];
+      if (stops.length < 2) return;
+      const fromIdx = stopIndex > 0 ? stopIndex - 1 : 0;
+      const toIdx = stopIndex > 0 ? stopIndex : 1;
+      const stopA = stops[fromIdx];
+      const stopB = stops[toIdx];
+      if (!stopA || !stopB) return;
+
+      saveUiSessionState();
+      const origin = (stopA.lat && stopA.lng) ? `${stopA.lat},${stopA.lng}` : encodeURIComponent(stopA.name || '');
+      const dest = (stopB.lat && stopB.lng) ? `${stopB.lat},${stopB.lng}` : encodeURIComponent(stopB.name || '');
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=driving`;
+      window.open(url, '_blank');
+    }
+
+    // 全自動重算指定天數所有行程站點之間的 Google 導航車程時間與距離
     async function recalculateDayRoutes(dayIndex = currentDayIndex.value) {
       if (!currentTrip.value || !currentTrip.value.tripDays[dayIndex]) return;
       const day = currentTrip.value.tripDays[dayIndex];
@@ -1103,7 +1180,7 @@ createApp({
       }
 
       isCalculatingRoute.value = true;
-      routeCalcStatusText.value = '🚗 正在自動計算各站定位與真實開車時間...';
+      routeCalcStatusText.value = '🧭 正在透過 Google 導航計算各站時間與距離...';
 
       try {
         // 1. 解析每一站的經緯度
@@ -1111,7 +1188,7 @@ createApp({
           await resolveStopCoords(stops[i]);
         }
 
-        // 2. 計算相鄰兩站的真實行車時間
+        // 2. 計算相鄰兩站的 Google 導航行車時間與公里數
         for (let i = 0; i < stops.length; i++) {
           if (i < stops.length - 1) {
             const cA = (stops[i].lat && stops[i].lng) ? { lat: stops[i].lat, lng: stops[i].lng } : null;
@@ -1121,11 +1198,13 @@ createApp({
               if (route) {
                 stops[i].travelMin = route.minutes;
                 stops[i].travelKm = route.km;
+                stops[i].routeVia = route.routeVia || '';
               }
             }
           } else {
             stops[i].travelMin = 0;
             stops[i].travelKm = 0;
+            stops[i].routeVia = '';
           }
         }
         persistData();
@@ -1135,7 +1214,7 @@ createApp({
       }
     }
 
-    // 在「新增/編輯行程」彈窗內，當輸入地點或選好地圖時即時預估車程
+    // 在「新增/編輯行程」彈窗內，當輸入地點或選好地圖時即時預估 Google 導航車程與距離
     const formStopAutoRouteHint = ref('');
     async function autoEstimateFormStopRoute() {
       if (!currentTrip.value) return;
@@ -1143,10 +1222,10 @@ createApp({
       if (!day) return;
       const stops = day.stops || [];
 
-      formStopAutoRouteHint.value = '🔄 正在定位並自動計算車程...';
+      formStopAutoRouteHint.value = '🔄 正在定位並透過 Google 導航計算時間與距離...';
       const coords = await resolveStopCoords(formStop.value);
       if (!coords) {
-        formStopAutoRouteHint.value = '💡 請點選「地圖選點」標記位置以自動計算精準車程';
+        formStopAutoRouteHint.value = '💡 請點選「地圖選點」標記位置以自動計算 Google 導航時間與距離';
         return;
       }
 
@@ -1160,7 +1239,8 @@ createApp({
         if (prevCoords) {
           const rPrev = await calculateDrivingRoute(prevCoords, coords);
           if (rPrev) {
-            messages.push(`從上一站「${prevStop.name}」開過來約 ${rPrev.minutes} 分鐘 (${rPrev.km} km)`);
+            const viaText = rPrev.routeVia ? ` [經 ${rPrev.routeVia}]` : '';
+            messages.push(`從上一站「${prevStop.name}」開過來：${formatGoogleDuration(rPrev.minutes)} • ${rPrev.km} 公里${viaText}`);
           }
         }
       }
@@ -1171,17 +1251,20 @@ createApp({
           if (rNext) {
             formStop.value.travelMin = rNext.minutes;
             formStop.value.travelKm = rNext.km;
-            messages.push(`開往下一站「${nextStop.name}」約 ${rNext.minutes} 分鐘 (${rNext.km} km)`);
+            formStop.value.routeVia = rNext.routeVia || '';
+            const viaText = rNext.routeVia ? ` [經 ${rNext.routeVia}]` : '';
+            messages.push(`開往下一站「${nextStop.name}」：${formatGoogleDuration(rNext.minutes)} • ${rNext.km} 公里${viaText}`);
           }
         }
       } else {
         formStop.value.travelMin = 0;
         formStop.value.travelKm = 0;
+        formStop.value.routeVia = '';
       }
 
       formStopAutoRouteHint.value = messages.length > 0
-        ? `✅ 已自動算好車程：${messages.join('；')}`
-        : `✅ 已鎖定座標 (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})，儲存後將自動連算全天車程！`;
+        ? `🧭 Google 導航計算結果：${messages.join('；')}`
+        : `✅ 已鎖定座標 (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})，儲存後將自動連算全天導航時間與距離！`;
     }
 
     // ----------------------------------------------------
@@ -2054,6 +2137,31 @@ createApp({
     // ----------------------------------------------------
     // Firebase 初始化與全功能即時同步 (含多活動同步)
     // ----------------------------------------------------
+    let isCloudAutoRecalculating = false;
+    async function checkAndAutoRecalcMissingRoutes() {
+      if (isCloudAutoRecalculating || !currentTrip.value?.tripDays) return;
+      const days = currentTrip.value.tripDays;
+      for (let dIdx = 0; dIdx < days.length; dIdx++) {
+        const stops = days[dIdx]?.stops || [];
+        if (stops.length > 1) {
+          const needsCalc = stops.some((s, idx) => {
+            if (idx < stops.length - 1) {
+              return !s.lat || !s.lng || !s.travelKm;
+            }
+            return Number(s.travelMin) > 0;
+          });
+          if (needsCalc) {
+            isCloudAutoRecalculating = true;
+            try {
+              await recalculateDayRoutes(dIdx);
+            } finally {
+              isCloudAutoRecalculating = false;
+            }
+          }
+        }
+      }
+    }
+
     async function initFirebaseIfConfigured() {
       const cfg = window.APP_CONFIG?.FIREBASE_CONFIG;
       if (!cfg || !cfg.apiKey || typeof firebase === 'undefined') {
@@ -2091,6 +2199,7 @@ createApp({
                 }
                 updateBrowserUrlForCurrentTrip();
                 localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
+                setTimeout(() => checkAndAutoRecalcMissingRoutes(), 200);
               } else {
                 syncStatus.value = 'cloud';
                 saveAllToFirebase();
@@ -2140,6 +2249,7 @@ createApp({
               }
               updateBrowserUrlForCurrentTrip();
               localStorage.setItem('camp_all_trips_cache', JSON.stringify(data.allTrips));
+              setTimeout(() => checkAndAutoRecalcMissingRoutes(), 200);
             }
           } else {
             syncStatus.value = 'cloud';
@@ -2479,6 +2589,8 @@ createApp({
       campSiteInfo,
       tripDays,
       getCalculatedStops,
+      formatGoogleDuration,
+      openGoogleRouteDirection,
       openMapNavigation,
       isCalculatingRoute,
       routeCalcStatusText,
